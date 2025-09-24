@@ -72,12 +72,6 @@ export const processImage = async (req, res) => {
 };
 
 
-export const getUploadForm = (req, res) => {
-    res.render('upload', {
-        originalImage: null,
-        processedImage: null
-    });
-};
 
 // Batch processing endpoint for multiple images - Memory only processing
 export const processBatch = async (req, res) => {
