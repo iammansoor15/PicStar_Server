@@ -9,6 +9,7 @@ import { rateLimiter } from './middleware/rate-limit.js';
 import { requestLogger, logger } from './middleware/logger.js';
 import config from './config/config.js';
 import cleanupService from './utils/cleanup-service.js';
+import keepAliveService from './utils/keep-alive-service.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -55,6 +56,9 @@ ensureDirectoryExists(config.paths.uploads);
 
 // Start cleanup service for uploads folder
 cleanupService.start();
+
+// Start keep-alive service to ping external server
+keepAliveService.start();
 
 // Create logs directory if it doesn't exist
 ensureDirectoryExists(config.paths.logs);
