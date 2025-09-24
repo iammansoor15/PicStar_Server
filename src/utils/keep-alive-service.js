@@ -7,7 +7,7 @@ class KeepAliveService {
         this.isRunning = false;
         this.config = {
             url: process.env.KEEP_ALIVE_URL || 'https://picstar-server.onrender.com/',
-            interval: parseInt(process.env.KEEP_ALIVE_INTERVAL_MINUTES || '5') * 60 * 1000, // Convert to milliseconds
+            interval: parseInt(process.env.KEEP_ALIVE_INTERVAL_MINUTES || '10') * 60 * 1000, // Convert to milliseconds
             enabled: process.env.KEEP_ALIVE_ENABLED === 'true',
             timeout: 30000 // 30 second timeout
         };
