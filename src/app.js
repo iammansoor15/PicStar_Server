@@ -16,6 +16,11 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 
+// Trust proxy for Render.com
+if (config.app.env === 'production') {
+    app.set('trust proxy', 1); // Trust first proxy (Render.com)
+}
+
 // Middleware pipeline
 if (config.app.env === 'production') {
     app.use(rateLimiter); // Rate limiting for production

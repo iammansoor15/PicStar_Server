@@ -38,7 +38,7 @@ router.post('/test', (req, res) => {
 // API status endpoint
 router.get('/', (req, res) => {
   res.status(200).json({ 
-    name: 'Narayana Image Processing API',
+    name: 'Picstar Image Processing API',
     version: '1.0.0',
     status: 'running',
     endpoints: {

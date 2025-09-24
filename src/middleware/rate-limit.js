@@ -15,6 +15,18 @@ export const rateLimiter = rateLimit({
     skipSuccessfulRequests: false,
     // Skip failed responses when counting towards the limit  
     skipFailedRequests: false,
+    // Fix for Render.com proxy headers
+    trustProxy: true,
+    keyGenerator: (req) => {
+        // Use the real IP from X-Forwarded-For, but handle multiple IPs safely
+        const forwarded = req.headers['x-forwarded-for'];
+        if (forwarded) {
+            // Take the first IP from the X-Forwarded-For chain
+            const firstIp = forwarded.split(',')[0].trim();
+            return firstIp;
+        }
+        return req.ip || req.connection.remoteAddress || 'unknown';
+    },
     handler: (req, res) => {
         res.status(429).json({
             error: 'Too many requests',
@@ -34,6 +46,18 @@ export const uploadRateLimiter = rateLimit({
     },
     standardHeaders: true,
     legacyHeaders: false,
+    // Fix for Render.com proxy headers
+    trustProxy: true,
+    keyGenerator: (req) => {
+        // Use the real IP from X-Forwarded-For, but handle multiple IPs safely
+        const forwarded = req.headers['x-forwarded-for'];
+        if (forwarded) {
+            // Take the first IP from the X-Forwarded-For chain
+            const firstIp = forwarded.split(',')[0].trim();
+            return firstIp;
+        }
+        return req.ip || req.connection.remoteAddress || 'unknown';
+    },
     handler: (req, res) => {
         res.status(429).json({
             error: 'Upload rate limit exceeded',
