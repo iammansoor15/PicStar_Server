@@ -5,40 +5,57 @@ class KeepAliveService {
     constructor() {
         this.intervalId = null;
         this.isRunning = false;
+
+        // Determine a sensible default base URL and ensure we hit /health
+        const base = process.env.KEEP_ALIVE_URL || process.env.SERVER_URL || process.env.RENDER_EXTERNAL_URL || 'http://localhost:10000';
+        const normalizedBase = (base || '').replace(/\/$/, '');
+        const defaultUrl = /\/health$/.test(normalizedBase) ? normalizedBase : `${normalizedBase}/health`;
+
         this.config = {
-            url: process.env.KEEP_ALIVE_URL || 'https://picstar-server.onrender.com/',
-            interval: parseInt(process.env.KEEP_ALIVE_INTERVAL_MINUTES || '10') * 60 * 1000, // Convert to milliseconds
-            enabled: process.env.KEEP_ALIVE_ENABLED === 'true',
-            timeout: 30000 // 30 second timeout
+            url: defaultUrl,
+            interval: parseInt(process.env.KEEP_ALIVE_INTERVAL_MINUTES || '10') * 60 * 1000, // ms
+            enabled: process.env.KEEP_ALIVE_ENABLED ? process.env.KEEP_ALIVE_ENABLED === 'true' : true, // default: enabled
+            timeout: 30000 // 30s timeout
         };
     }
 
     async pingServer() {
+        const startTime = Date.now();
+        logger.info(`🏓 Pinging keep-alive server: ${this.config.url}`);
+
+        // Use AbortController for timeouts (node-fetch v3)
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), this.config.timeout);
+
         try {
-            const startTime = Date.now();
-            logger.info(`🏓 Pinging keep-alive server: ${this.config.url}`);
-            
             const response = await fetch(this.config.url, {
                 method: 'GET',
-                timeout: this.config.timeout,
-                headers: {
-                    'User-Agent': 'KeepAlive-Service/1.0'
-                }
+                headers: { 'User-Agent': 'KeepAlive-Service/1.0' },
+                signal: controller.signal,
             });
 
             const responseTime = Date.now() - startTime;
-            
+
             if (response.ok) {
-                const data = await response.json();
-                logger.info(`✅ Keep-alive ping successful (${responseTime}ms) - Server status: ${data.status || 'unknown'}`);
+                let data = null;
+                const contentType = response.headers.get('content-type') || '';
+                if (contentType.includes('application/json')) {
+                    data = await response.json();
+                } else {
+                    data = await response.text();
+                }
+                logger.info(`✅ Keep-alive ping successful (${responseTime}ms)`);
                 return { success: true, responseTime, data };
             } else {
                 logger.warn(`⚠️ Keep-alive ping returned ${response.status}: ${response.statusText}`);
                 return { success: false, status: response.status, statusText: response.statusText };
             }
         } catch (error) {
-            logger.error(`❌ Keep-alive ping failed: ${error.message}`);
-            return { success: false, error: error.message };
+            const responseTime = Date.now() - startTime;
+            logger.error(`❌ Keep-alive ping failed after ${responseTime}ms: ${error.message}`);
+            return { success: false, error: error.message, responseTime };
+        } finally {
+            clearTimeout(timer);
         }
     }
 

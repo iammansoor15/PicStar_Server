@@ -4,6 +4,25 @@ import templateController from '../controllers/template-controller.js';
 
 const router = express.Router();
 
+// Root template endpoint
+router.get('/', (req, res) => {
+  res.json({
+    success: true,
+    message: 'Picstar Template Service',
+    version: '1.0.0',
+    endpoints: {
+      categories: 'GET /api/templates/categories',
+      byCategory: 'GET /api/templates/category/:category',
+      upload: 'POST /api/templates/upload',
+      batchUpload: 'POST /api/templates/batch-upload',
+      delete: 'DELETE /api/templates/:category/:templateId',
+      search: 'GET /api/templates/search',
+      health: 'GET /api/templates/health'
+    },
+    timestamp: new Date().toISOString()
+  });
+});
+
 // Template management routes
 
 /**

@@ -69,7 +69,7 @@ keepAliveService.start();
 ensureDirectoryExists(config.paths.logs);
 
 // Start server with environment-configured host
-app.listen(config.app.port, config.app.host, () => {
+const server = app.listen(config.app.port, config.app.host, () => {
     console.log(`🚀 Server running in ${config.app.env} mode on ${config.app.host}:${config.app.port}`);
     console.log(`🌐 Server URL: ${config.app.serverUrl}`);
     console.log(`📁 Uploads directory: ${config.paths.uploads}`);
@@ -80,4 +80,27 @@ app.listen(config.app.port, config.app.host, () => {
         console.log(`📱 Accessible from any network interface`);
         console.log(`💡 For mobile testing, use your network IP instead of localhost`);
     }
+});
+
+// Harden server timeouts to better handle cold starts and processing
+try {
+    // Keep sockets open long enough for render/load balancers
+    server.keepAliveTimeout = 65_000; // 65s
+    server.headersTimeout = 66_000;   // must be > keepAliveTimeout
+    server.requestTimeout = 120_000;  // 120s for processing endpoints
+    console.log('⏱️ Server timeouts configured:', {
+        keepAliveTimeout: server.keepAliveTimeout,
+        headersTimeout: server.headersTimeout,
+        requestTimeout: server.requestTimeout,
+    });
+} catch (e) {
+    console.warn('⚠️ Could not set server timeouts:', e?.message);
+}
+
+// Global error handlers
+process.on('unhandledRejection', (reason) => {
+    console.error('🚨 Unhandled promise rejection:', reason);
+});
+process.on('uncaughtException', (err) => {
+    console.error('🚨 Uncaught exception:', err);
 });
