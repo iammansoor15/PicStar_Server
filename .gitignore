@@ -1,0 +1,48 @@
+echo "# Node modules
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Logs
+logs
+*.log
+*.pid
+*.seed
+*.pid.lock
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build output
+/dist
+/build
+/out
+
+# React Native
+/android/app/build/
+/ios/build/
+/ios/Pods/
+/ios/Podfile.lock
+*.xcworkspace
+
+# Android/Gradle
+.gradle/
+/local.properties
+/.idea
+/captures/
+/*.iml
+/app/build/
+/build/
+
+# Keystore files
+*.jks
+*.keystore
+*.keystore.properties
+*.gradle
+
+# Misc
+.env
+.expo
+.expo-shared" > .gitignore

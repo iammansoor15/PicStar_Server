@@ -1,0 +1,32 @@
+{
+  "name": "narayana-image-processor",
+  "version": "1.0.0",
+  "description": "Image processing server for Narayana App",
+  "type": "module",
+  "main": "src/app.js",
+  "scripts": {
+    "start": "node src/app.js",
+    "dev": "nodemon src/app.js",
+    "migrate-templates": "node src/scripts/migrate-templates.js"
+  },
+  "author": "",
+  "license": "ISC",
+  "keywords": [],
+  "dependencies": {
+    "cloudinary": "^2.7.0",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.2",
+    "ejs": "^3.1.10",
+    "express": "^5.1.0",
+    "express-rate-limit": "^8.1.0",
+    "form-data": "^4.0.4",
+    "multer": "^2.0.2",
+    "node-fetch": "^3.3.2",
+    "sharp": "^0.34.4",
+    "transparent-background": "^1.5.0",
+    "uuid": "^10.0.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.10"
+  }
+}
