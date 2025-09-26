@@ -9,6 +9,14 @@ export class TemplateController {
     this.TEMPLATE_FOLDER_PREFIX = 'narayana_templates';
   }
 
+  // Normalize category strings to a safe folder name
+  sanitizeCategory(input) {
+    return String(input || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]/g, '_');
+  }
+
   /**
    * Upload a template to Cloudinary with proper categorization
    */
@@ -32,22 +40,39 @@ export class TemplateController {
         });
       }
 
-      // Generate unique public ID for this template
-      const templateId = uuidv4();
-      const publicId = `${this.TEMPLATE_FOLDER_PREFIX}/${category}/${templateId}`;
+      // Sanitize and enforce category folder
+      const safeCategory = this.sanitizeCategory(category);
 
-      console.log(`📁 Uploading to Cloudinary with public_id: ${publicId}`);
+      // Generate unique ID and folder path
+      const templateId = uuidv4();
+      const folder = `${this.TEMPLATE_FOLDER_PREFIX}/${safeCategory}`;
+
+      console.log(`📁 Uploading to Cloudinary in folder: ${folder} with public_id: ${templateId}`);
 
       // Upload to Cloudinary from memory buffer
-      const result = await cloudinary.uploader.upload(`data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`, {
-        public_id: publicId, // Already includes the full path
+      let uploadData;
+      if (req.file.buffer) {
+        // Handle buffer from multer memory storage
+        uploadData = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
+      } else if (req.file.path) {
+        // Handle file path (fallback)
+        uploadData = req.file.path;
+      } else {
+        throw new Error('No valid file data found');
+      }
+
+      console.log(`📸 File info: size=${req.file.size}, mimetype=${req.file.mimetype}`);
+
+      const result = await cloudinary.uploader.upload(uploadData, {
+        folder,               // Ensure asset is stored under category folder
+        public_id: templateId, // Keep public_id simple; folder controls path
         resource_type: 'image',
         overwrite: false,
-        tags: ['template', category, 'narayana-app'],
+        tags: ['template', safeCategory, 'narayana-app'],
         context: {
           name: name || 'Untitled Template',
           description: description || '',
-          category: category,
+          category: safeCategory,
           uploaded_at: new Date().toISOString()
         }
       });
@@ -62,7 +87,7 @@ export class TemplateController {
           id: templateId,
           public_id: result.public_id,
           secure_url: result.secure_url,
-          category: category,
+          category: safeCategory,
           name: name || 'Untitled Template',
           description: description || '',
           width: result.width,
@@ -78,12 +103,32 @@ export class TemplateController {
 
     } catch (error) {
       console.error('❌ Error uploading template:', error);
+      console.error('❌ Full error stack:', error.stack);
+      console.error('❌ Request file info:', req.file ? {
+        fieldname: req.file.fieldname,
+        originalname: req.file.originalname,
+        mimetype: req.file.mimetype,
+        size: req.file.size,
+        hasBuffer: !!req.file.buffer,
+        hasPath: !!req.file.path
+      } : 'No file in request');
+      console.error('❌ Request body:', req.body);
       
       // No file cleanup needed for memory storage
 
       res.status(500).json({
         success: false,
-        error: error.message || 'Failed to upload template'
+        error: error.message || 'Failed to upload template',
+        debug: process.env.NODE_ENV === 'development' ? {
+          stack: error.stack,
+          file: req.file ? {
+            fieldname: req.file.fieldname,
+            originalname: req.file.originalname,
+            mimetype: req.file.mimetype,
+            size: req.file.size
+          } : null,
+          body: req.body
+        } : undefined
       });
     }
   }
@@ -96,30 +141,82 @@ export class TemplateController {
       const { category } = req.params;
       const { page = 1, limit = 10, sort_by = 'created_at', order = 'desc' } = req.query;
 
-      console.log(`📂 Fetching templates for category: ${category}, page: ${page}, limit: ${limit}`);
+      const safeCategory = this.sanitizeCategory(category);
+      console.log(`📂 Fetching templates for category: ${safeCategory}, page: ${page}, limit: ${limit}`);
 
       const pageNum = parseInt(page, 10);
       const limitNum = parseInt(limit, 10);
       const offset = (pageNum - 1) * limitNum;
 
+      // Debug: Log the search expression
+      const searchExpression = `folder:\"${this.TEMPLATE_FOLDER_PREFIX}/${safeCategory}\"`;
+      console.log(`🔍 Search expression: ${searchExpression}`);
+      console.log(`🔍 Template folder prefix: ${this.TEMPLATE_FOLDER_PREFIX}`);
+
       // Search for templates in the specific category folder
       const searchOptions = {
         type: 'upload',
-        prefix: `${this.TEMPLATE_FOLDER_PREFIX}/${category}/`,
+        prefix: `${this.TEMPLATE_FOLDER_PREFIX}/${safeCategory}/`,
         max_results: limitNum,
         next_cursor: req.query.next_cursor || undefined,
         sort_by: [[sort_by, order]],
         resource_type: 'image'
       };
 
-      const result = await cloudinary.search
-        .expression(`folder:"${this.TEMPLATE_FOLDER_PREFIX}/${category}"`)
-        .with_field('tags')
-        .with_field('context')
-        .max_results(limitNum)
-        .next_cursor(req.query.next_cursor || undefined)
-        .sort_by(sort_by, order)
-        .execute();
+      console.log(`🔍 Search options:`, JSON.stringify(searchOptions, null, 2));
+
+      // Try multiple search strategies to find all templates
+      let result;
+      let searchStrategies = [
+        // Strategy 1: Folder-based search
+        `folder:\"${this.TEMPLATE_FOLDER_PREFIX}/${safeCategory}\"`,
+        // Strategy 2: Public ID prefix search 
+        `public_id:${this.TEMPLATE_FOLDER_PREFIX}/${safeCategory}/*`,
+        // Strategy 3: Tag-based search
+        `tags:${safeCategory} AND tags:template`,
+        // Strategy 4: Context-based search
+        `context.category:${safeCategory}`
+      ];
+
+      for (let i = 0; i < searchStrategies.length; i++) {
+        const strategy = searchStrategies[i];
+        console.log(`🔍 Trying search strategy ${i + 1}: ${strategy}`);
+        
+        try {
+          result = await cloudinary.search
+            .expression(strategy)
+            .with_field('tags')
+            .with_field('context')
+            .max_results(limitNum)
+            .next_cursor(req.query.next_cursor || undefined)
+            .sort_by(sort_by, order)
+            .execute();
+
+          console.log(`🔍 Strategy ${i + 1} result: ${result.total_count} templates found`);
+          
+          // If we found templates, use this strategy
+          if (result.total_count > 0) {
+            console.log(`✅ Using strategy ${i + 1} - found ${result.total_count} templates`);
+            break;
+          }
+        } catch (error) {
+          console.error(`❌ Strategy ${i + 1} failed:`, error.message);
+          continue;
+        }
+      }
+
+      // If no strategy worked, fall back to the original result (or empty)
+      if (!result || result.total_count === 0) {
+        console.log(`⚠️ All search strategies failed or returned 0 results`);
+        result = result || { resources: [], total_count: 0 };
+      }
+
+      console.log(`🔍 Final Cloudinary search result:`, {
+        total_count: result.total_count,
+        resource_count: result.resources?.length || 0,
+        next_cursor: result.next_cursor,
+        resources: result.resources?.map(r => ({ public_id: r.public_id, tags: r.tags, folder: r.folder })) || []
+      });
 
       // Transform the results to a consistent format
       const templates = result.resources.map(resource => ({
@@ -127,7 +224,7 @@ export class TemplateController {
         public_id: resource.public_id,
         secure_url: resource.secure_url,
         url: resource.url,
-        category: category,
+        category: safeCategory,
         name: resource.context?.name || 'Untitled Template',
         description: resource.context?.description || '',
         width: resource.width,
@@ -152,7 +249,7 @@ export class TemplateController {
             has_next_page: !!result.next_cursor,
             next_cursor: result.next_cursor || null
           },
-          category: category
+          category: safeCategory
         }
       });
 
@@ -230,9 +327,10 @@ export class TemplateController {
     try {
       const { category, templateId } = req.params;
       
-      console.log(`🗑️ Deleting template: ${templateId} from category: ${category}`);
+      const safeCategory = this.sanitizeCategory(category);
+      console.log(`🗑️ Deleting template: ${templateId} from category: ${safeCategory}`);
 
-      const publicId = `${this.TEMPLATE_FOLDER_PREFIX}/${category}/${templateId}`;
+      const publicId = `${this.TEMPLATE_FOLDER_PREFIX}/${safeCategory}/${templateId}`;
 
       // Delete from Cloudinary
       const result = await cloudinary.uploader.destroy(publicId, {
@@ -246,7 +344,7 @@ export class TemplateController {
           message: 'Template deleted successfully',
           data: {
             template_id: templateId,
-            category: category,
+            category: safeCategory,
             public_id: publicId
           }
         });
@@ -290,25 +388,27 @@ export class TemplateController {
         });
       }
 
-      console.log(`📁 Batch uploading ${req.files.length} templates to category: ${category}`);
+      const safeCategory = this.sanitizeCategory(category);
+      console.log(`📁 Batch uploading ${req.files.length} templates to category: ${safeCategory}`);
 
       // Process all files in parallel (but with limited concurrency)
       const uploadPromises = req.files.map(async (file, index) => {
         try {
           const templateId = uuidv4();
-          const publicId = `${this.TEMPLATE_FOLDER_PREFIX}/${category}/${templateId}`;
+          const folder = `${this.TEMPLATE_FOLDER_PREFIX}/${safeCategory}`;
 
           console.log(`📸 Uploading file ${index + 1}/${req.files.length}: ${file.originalname}`);
 
           const result = await cloudinary.uploader.upload(`data:${file.mimetype};base64,${file.buffer.toString('base64')}`, {
-            public_id: publicId, // Already includes the full path
+            folder,
+            public_id: templateId,
             resource_type: 'image',
             overwrite: false,
-            tags: ['template', category, 'narayana-app', 'batch-upload'],
+            tags: ['template', safeCategory, 'narayana-app', 'batch-upload'],
             context: {
               name: file.originalname || `Template ${index + 1}`,
               description: `Template uploaded via batch process`,
-              category: category,
+              category: safeCategory,
               uploaded_at: new Date().toISOString(),
               batch_upload: 'true'
             }
@@ -358,7 +458,7 @@ export class TemplateController {
             total_files: req.files.length,
             successful_uploads: successful.length,
             failed_uploads: failed.length,
-            category: category
+            category: safeCategory
           }
         }
       });
