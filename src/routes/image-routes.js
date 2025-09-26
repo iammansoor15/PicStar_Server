@@ -2,13 +2,13 @@ import express from 'express';
 import { logger } from '../middleware/logger.js';
 import { upload } from '../middleware/upload.js';
 import { uploadRateLimiter } from '../middleware/rate-limit.js';
-import { processImage, processBatch } from '../controllers/image-controller.js';
+import { processImage, processBatch, getJobStatus } from '../controllers/image-controller.js';
 import cleanupService from '../utils/cleanup-service.js';
 import keepAliveService from '../utils/keep-alive-service.js';
 
 const router = express.Router();
 
-// Health check endpoint for connectivity testing
+// Health check endpoint for connectivity testing (lightweight)
 router.get('/health', (req, res) => {
   const clientIp = req.headers['x-forwarded-for'] || req.ip;
   const userAgent = req.get('User-Agent');
@@ -45,18 +45,26 @@ router.get('/', (req, res) => {
       health: 'GET /health',
       process: 'POST /process',
       batch: 'POST /process-batch',
+      status: 'GET /status/:jobId',
       templates: 'GET /api/templates'
     },
     timestamp: new Date().toISOString()
   });
 });
+
+// Enqueue single image processing
 router.post('/process', uploadRateLimiter, upload.single('image'), processImage);
+
+// Enqueue batch processing (returns jobId immediately)
 router.post('/process-batch', uploadRateLimiter, upload.array('images', 10), (req, res, next) => {
   const clientIp = req.headers['x-forwarded-for'] || req.ip;
   const userAgent = req.get('User-Agent');
-  logger.info('Mobile device connected: processing batch', { ip: clientIp, userAgent, files: (req.files || []).length });
+  logger.info('Mobile device connected: enqueuing batch', { ip: clientIp, userAgent, files: (req.files || []).length });
   next();
 }, processBatch);
+
+// Job status endpoint for polling
+router.get('/status/:jobId', getJobStatus);
 
 // Cleanup service stats endpoint
 router.get('/cleanup-stats', async (req, res) => {
