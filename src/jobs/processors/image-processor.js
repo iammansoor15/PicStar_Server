@@ -1,11 +1,12 @@
 import sharp from 'sharp';
 import { transparentBackground } from 'transparent-background';
 
-// Resize helper to bound images ~1024px to speed up CPU processing
-async function preResize(buffer) {
+// Resize helper to bound images to a max dimension to speed up CPU processing
+async function preResize(buffer, maxDim = 1024) {
   try {
+    const max = Math.max(64, Math.min(Number(maxDim) || 1024, 4096));
     return await sharp(buffer)
-      .resize({ width: 1024, height: 1024, fit: 'inside', withoutEnlargement: true })
+      .resize({ width: max, height: max, fit: 'inside', withoutEnlargement: true })
       .toBuffer();
   } catch {
     // If resize fails, fall back to original buffer
@@ -33,7 +34,8 @@ export async function processSingle(payload, ctx) {
   if (!file?.buffer?.length) throw new Error('Invalid file buffer');
 
   // Resize to speed up, then remove background, then finalize PNG
-  const resized = await preResize(file.buffer);
+  const maxSize = payload?.options?.maxSize || 1024;
+  const resized = await preResize(file.buffer, maxSize);
   const removed = await removeBackground(resized);
   const processed = await finalizePng(removed);
 
@@ -62,7 +64,8 @@ export async function processBatch(payload, ctx) {
     const file = files[i];
 
     try {
-      const resized = await preResize(file.buffer);
+      const maxSize = payload?.options?.maxSize || 1024;
+      const resized = await preResize(file.buffer, maxSize);
       const removed = await removeBackground(resized);
       const processed = await finalizePng(removed);
 

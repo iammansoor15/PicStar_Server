@@ -13,13 +13,16 @@ export const processImage = async (req, res) => {
             throw new Error('No file uploaded');
         }
 
+        const maxSize = parseInt(req.body?.max_size || req.query?.max_size || req.headers['x-max-size'] || '1024', 10);
+
         const job = createJob('single-image', {
             file: {
                 buffer: req.file.buffer,
                 mimetype: req.file.mimetype,
                 originalname: req.file.originalname,
                 size: req.file.size,
-            }
+            },
+            options: { maxSize: isNaN(maxSize) ? 1024 : maxSize }
         });
 
         return res.status(202).json({
@@ -51,7 +54,9 @@ export const processBatch = async (req, res) => {
             size: f.size,
         }));
 
-        const job = createJob('batch-image', { files });
+        const maxSize = parseInt(req.body?.max_size || req.query?.max_size || req.headers['x-max-size'] || '1024', 10);
+
+        const job = createJob('batch-image', { files, options: { maxSize: isNaN(maxSize) ? 1024 : maxSize } });
 
         return res.status(202).json({
             success: true,
