@@ -1,4 +1,4 @@
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import config from '../config/config.js';
 
 // Create rate limiter with environment-based configuration
@@ -17,16 +17,8 @@ export const rateLimiter = rateLimit({
     skipFailedRequests: false,
     // Fix for Render.com proxy headers
     trustProxy: true,
-    keyGenerator: (req) => {
-        // Use the real IP from X-Forwarded-For, but handle multiple IPs safely
-        const forwarded = req.headers['x-forwarded-for'];
-        if (forwarded) {
-            // Take the first IP from the X-Forwarded-For chain
-            const firstIp = forwarded.split(',')[0].trim();
-            return firstIp;
-        }
-        return req.ip || req.connection.remoteAddress || 'unknown';
-    },
+    // Use the library helper to properly handle IPv4/IPv6 and proxies
+    keyGenerator: (req) => ipKeyGenerator(req),
     handler: (req, res) => {
         res.status(429).json({
             error: 'Too many requests',
@@ -48,16 +40,8 @@ export const uploadRateLimiter = rateLimit({
     legacyHeaders: false,
     // Fix for Render.com proxy headers
     trustProxy: true,
-    keyGenerator: (req) => {
-        // Use the real IP from X-Forwarded-For, but handle multiple IPs safely
-        const forwarded = req.headers['x-forwarded-for'];
-        if (forwarded) {
-            // Take the first IP from the X-Forwarded-For chain
-            const firstIp = forwarded.split(',')[0].trim();
-            return firstIp;
-        }
-        return req.ip || req.connection.remoteAddress || 'unknown';
-    },
+    // Use the library helper to properly handle IPv4/IPv6 and proxies
+    keyGenerator: (req) => ipKeyGenerator(req),
     handler: (req, res) => {
         res.status(429).json({
             error: 'Upload rate limit exceeded',

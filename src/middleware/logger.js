@@ -70,34 +70,17 @@ export const logger = {
     }
 };
 
-// Express middleware for request logging
+// Express middleware for minimal request logging
+// Only log when background removal images are posted
 export const requestLogger = (req, res, next) => {
-    const start = Date.now();
-    const { method, url, ip } = req;
-    
-    // Log request start
-    logger.info(`${method} ${url}`, { 
-        ip, 
-        userAgent: req.get('User-Agent'),
-        contentLength: req.get('Content-Length') || 0
-    });
-    
-    // Override res.end to capture response details
-    const originalEnd = res.end;
-    res.end = function(...args) {
-        const duration = Date.now() - start;
-        const { statusCode } = res;
-        
-        // Log response
-        const logLevel = statusCode >= 400 ? 'error' : statusCode >= 300 ? 'warn' : 'info';
-        logger[logLevel](`${method} ${url} ${statusCode}`, {
-            ip,
-            duration: `${duration}ms`,
-            statusCode
-        });
-        
-        originalEnd.apply(res, args);
-    };
-    
+    try {
+        const isBgPost = req.method === 'POST' && (req.path === '/process' || req.path === '/process-batch');
+        if (isBgPost) {
+            const filesCount = Array.isArray(req.files) ? req.files.length : (req.file ? 1 : 0);
+            const msg = filesCount === 1 ? 'Image received' : `Images received: ${filesCount}`;
+            logger.info(msg);
+        }
+    } catch {}
+    // No generic per-request/per-response logging to keep output minimal
     next();
 };

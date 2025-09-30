@@ -1,4 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
+import { logger } from '../middleware/logger.js';
 
 // Simple in-memory job queue and registry
 // Job lifecycle: queued -> processing -> completed | failed
@@ -33,6 +34,7 @@ export function createJob(type, payload) {
   };
   jobs.set(id, job);
   queue.push(id);
+  // Minimal logging handled in controller; no queue-level log here
   scheduleProcess();
   return job;
 }
@@ -85,8 +87,10 @@ async function processNext() {
     job.status = 'failed';
     job.error = err?.message || String(err);
     job.updatedAt = nowIso();
+    try { logger.error('Work failed'); } catch {}
   } finally {
     isProcessing = false;
+    try { if (job.status === 'completed') logger.info('Work done'); } catch {}
     // Free up payload memory after completion to reduce footprint
     if (job.status === 'completed' || job.status === 'failed') {
       try { delete job.payload; } catch {}

@@ -1,5 +1,6 @@
 import sharp from 'sharp';
-import { transparentBackground } from 'transparent-background';
+import { logger } from '../../middleware/logger.js';
+import config from '../../config/config.js';
 
 // Resize helper to bound images to a max dimension to speed up CPU processing
 async function preResize(buffer, maxDim = 1024) {
@@ -16,8 +17,18 @@ async function preResize(buffer, maxDim = 1024) {
 
 async function removeBackground(buffer) {
   try {
+    // Force CPU-only execution if configured
+    if (!config.backgroundRemoval.useGpu) {
+      try {
+        process.env.CUDA_VISIBLE_DEVICES = '';
+        process.env.USE_CUDA = '0';
+        process.env.ORT_OVERRIDE_PROVIDER = 'cpu';
+      } catch {}
+    }
+    // Dynamic import to ensure env vars are set before loading the lib
+    const { transparentBackground } = await import('transparent-background');
     return await transparentBackground(buffer, 'png', { fast: false });
-  } catch {
+  } catch (e) {
     // Fallback: return original if background removal fails
     return buffer;
   }
@@ -59,6 +70,10 @@ export async function processBatch(payload, ctx) {
   const { files } = payload; // array of { buffer, mimetype, originalname }
   if (!Array.isArray(files) || files.length === 0) throw new Error('No files in payload');
 
+  const t0 = Date.now();
+  let successCount = 0;
+  let failCount = 0;
+
   const results = [];
   for (let i = 0; i < files.length; i++) {
     const file = files[i];
@@ -84,6 +99,7 @@ export async function processBatch(payload, ctx) {
           compression: ((1 - processed.length / file.buffer.length) * 100).toFixed(1) + '%',
         },
       });
+      successCount++;
     } catch (err) {
       // Fallback: include original image if processing fails
       results.push({
@@ -94,6 +110,7 @@ export async function processBatch(payload, ctx) {
         warning: 'Background removal failed, using original image',
         error: err?.message || String(err),
       });
+      failCount++;
     }
 
     // Yield to event loop between images to keep server responsive
@@ -101,5 +118,6 @@ export async function processBatch(payload, ctx) {
     if (ctx?.reportProgress) ctx.reportProgress(Math.round(((i + 1) / files.length) * 100));
   }
 
-  return { success: true, results, summary: { total: files.length } };
+  const ms = Date.now() - t0;
+  return { success: true, results, summary: { total: files.length, success: successCount, failed: failCount, ms } };
 }

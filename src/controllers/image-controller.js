@@ -1,6 +1,7 @@
 import config from '../config/config.js';
 import { createJob, getJob, registerProcessor } from '../jobs/job-queue.js';
 import { processSingle as singleProcessor, processBatch as batchProcessor } from '../jobs/processors/image-processor.js';
+import { logger } from '../middleware/logger.js';
 
 // Register processors once (no-op if re-registered)
 registerProcessor('single-image', singleProcessor);
@@ -24,6 +25,10 @@ export const processImage = async (req, res) => {
             },
             options: { maxSize: isNaN(maxSize) ? 1024 : maxSize }
         });
+
+        try {
+            logger.info('Image received');
+        } catch {}
 
         return res.status(202).json({
             success: true,
@@ -57,6 +62,11 @@ export const processBatch = async (req, res) => {
         const maxSize = parseInt(req.body?.max_size || req.query?.max_size || req.headers['x-max-size'] || '1024', 10);
 
         const job = createJob('batch-image', { files, options: { maxSize: isNaN(maxSize) ? 1024 : maxSize } });
+
+        try {
+            const count = files.length || 0;
+            logger.info(count === 1 ? 'Image received' : `Images received: ${count}`);
+        } catch {}
 
         return res.status(202).json({
             success: true,

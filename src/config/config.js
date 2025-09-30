@@ -48,6 +48,7 @@ const config = {
         allowedTypes: ['image/jpeg', 'image/png', 'image/webp', 'image/jpg'],
         outputFormat: 'png', // PNG supports transparency
         quality: 100, // Maximum quality for transparency preservation
+        useGpu: String(process.env.BACKGROUND_GPU_ENABLED || '').toLowerCase() === 'true', // default false
     },
     cleanup: {
         intervalMinutes: parseInt(process.env.CLEANUP_INTERVAL_MINUTES) || 

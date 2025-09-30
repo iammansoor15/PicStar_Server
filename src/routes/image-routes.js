@@ -4,7 +4,6 @@ import { upload } from '../middleware/upload.js';
 import { uploadRateLimiter } from '../middleware/rate-limit.js';
 import { processImage, processBatch, getJobStatus } from '../controllers/image-controller.js';
 import cleanupService from '../utils/cleanup-service.js';
-import keepAliveService from '../utils/keep-alive-service.js';
 
 const router = express.Router();
 
@@ -16,7 +15,6 @@ router.get('/health', (req, res) => {
   res.status(200).json({ 
     status: 'ok', 
     message: 'Background removal server is running',
-    keepAlive: keepAliveService.getStatus(),
     timestamp: new Date().toISOString()
   });
 });
@@ -82,36 +80,5 @@ router.get('/cleanup-stats', async (req, res) => {
   }
 });
 
-// Keep-alive service status endpoint
-router.get('/keep-alive-status', (req, res) => {
-  try {
-    const status = keepAliveService.getStatus();
-    res.json({
-      success: true,
-      data: status
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
-  }
-});
-
-// Manual keep-alive ping endpoint for testing
-router.post('/keep-alive-ping', async (req, res) => {
-  try {
-    const result = await keepAliveService.manualPing();
-    res.json({
-      success: true,
-      data: result
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
-  }
-});
 
 export default router;

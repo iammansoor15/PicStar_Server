@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
+import cron from "node-cron";
 import { fileURLToPath } from 'url';
 import imageRoutes from './routes/image-routes.js';
 import templateRoutes from './routes/template-routes.js';
@@ -9,7 +10,6 @@ import { rateLimiter } from './middleware/rate-limit.js';
 import { requestLogger, logger } from './middleware/logger.js';
 import config from './config/config.js';
 import cleanupService from './utils/cleanup-service.js';
-import keepAliveService from './utils/keep-alive-service.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -62,11 +62,20 @@ ensureDirectoryExists(config.paths.uploads);
 // Start cleanup service for uploads folder
 cleanupService.start();
 
-// Start keep-alive service to ping external server
-keepAliveService.start();
 
 // Create logs directory if it doesn't exist
 ensureDirectoryExists(config.paths.logs);
+
+
+
+cron.schedule("*/2 * * * *", async () => {
+  try {
+    const res = await fetch("https://picstar-server.onrender.com");
+    console.log("✅ Pinged server:", res.status);
+  } catch (err) {
+    console.error("❌ Error pinging server:", err.message);
+  }
+});
 
 // Start server with environment-configured host
 const server = app.listen(config.app.port, config.app.host, () => {
