@@ -82,6 +82,13 @@ export const getJobStatus = async (req, res) => {
         if (!job) return res.status(404).json({ success: false, error: 'Job not found' });
 
         const { id, status, progress, createdAt, updatedAt, result, error } = job;
+        // Disable caching for job status to avoid 304 responses
+        res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+        res.set('Pragma', 'no-cache');
+        res.set('Expires', '0');
+        res.set('Surrogate-Control', 'no-store');
+        // Update Last-Modified to force fresh responses
+        res.set('Last-Modified', new Date().toUTCString());
         return res.json({ success: true, id, status, progress, createdAt, updatedAt, result, error });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message || 'Failed to fetch job status' });
