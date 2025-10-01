@@ -68,7 +68,7 @@ ensureDirectoryExists(config.paths.logs);
 
 
 
-cron.schedule("*/2 * * * *", async () => {
+cron.schedule("*/15 * * * *", async () => {
   try {
     const res = await fetch("https://picstar-server.onrender.com");
     console.log("✅ Pinged server:", res.status);
