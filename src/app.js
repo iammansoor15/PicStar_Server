@@ -4,7 +4,8 @@ import path from 'path';
 import cron from "node-cron";
 import { fileURLToPath } from 'url';
 import imageRoutes from './routes/image-routes.js';
-import templateRoutes from './routes/template-routes.js';
+import templateRoutes from './routes/templateRoutes.js';
+import { connectDB } from './config/db.js';
 import { errorHandler } from './middleware/error-handler.js';
 import { rateLimiter } from './middleware/rate-limit.js';
 import { requestLogger, logger } from './middleware/logger.js';
@@ -16,12 +17,17 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 
-// Trust proxy for Render.com
+// Connect to MongoDB
+await connectDB().catch((err) => {
+  console.error('Failed to connect to MongoDB, exiting...', err.message);
+  process.exit(1);
+});
+
+
 if (config.app.env === 'production') {
     app.set('trust proxy', 1); // Trust first proxy (Render.com)
 }
 
-// Middleware pipeline
 if (config.app.env === 'production') {
     app.use(rateLimiter); // Rate limiting for production
 }
@@ -31,7 +37,6 @@ app.use(express.json({ limit: '10mb' })); // Increase JSON payload limit
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 
-// Static files with proper MIME type for PNG transparency
 app.use('/uploads', express.static(config.paths.uploads, {
     setHeaders: (res, path) => {
         if (path.endsWith('.png')) {
@@ -40,14 +45,15 @@ app.use('/uploads', express.static(config.paths.uploads, {
     }
 }));
 
-// Routes
+
 app.use('/', imageRoutes);
 app.use('/api/templates', templateRoutes);
+app.use('/', imageRoutes);
+
 
 // Error handling
 app.use(errorHandler);
 
-// Ensure required directories exist
 import fs from 'fs';
 const ensureDirectoryExists = (dirPath) => {
     if (!fs.existsSync(dirPath)) {
@@ -68,42 +74,45 @@ ensureDirectoryExists(config.paths.logs);
 
 
 
-cron.schedule("*/15 * * * *", async () => {
-  try {
-    const res = await fetch("https://picstar-server.onrender.com");
-    console.log("✅ Pinged server:", res.status);
-  } catch (err) {
-    console.error("❌ Error pinging server:", err.message);
-  }
-});
+// Keep-alive ping (only in production)
+if (config.app.env === 'production') {
+  cron.schedule("*/15s * * * *", async () => {
+    try {
+      const target = config.app.serverUrl || 'https://picstar-server.onrender.com';
+      const res = await fetch(target);
+      console.log("✅ Pinged server:", res.status);
+    } catch (err) {
+      console.error("❌ Error pinging server:", err.message);
+    }
+  });
+}
 
 // Start server with environment-configured host
 const server = app.listen(config.app.port, config.app.host, () => {
-    console.log(`🚀 Server running in ${config.app.env} mode on ${config.app.host}:${config.app.port}`);
-    console.log(`🌐 Server URL: ${config.app.serverUrl}`);
-    console.log(`📁 Uploads directory: ${config.paths.uploads}`);
-    console.log(`🧹 Auto-cleanup: ${config.cleanup.autoCleanupEnabled ? 'enabled' : 'disabled'}`);
-    console.log(`🌐 CORS enabled for: ${Array.isArray(config.cors.origin) ? config.cors.origin.join(', ') : config.cors.origin}`);
-    
-    if (config.app.host === '0.0.0.0') {
-        console.log(`📱 Accessible from any network interface`);
-        console.log(`💡 For mobile testing, use your network IP instead of localhost`);
-    }
+  console.log(`🚀 Server running in ${config.app.env} mode on ${config.app.host}:${config.app.port}`);
+  console.log(`🌐 Server URL: ${config.app.serverUrl}`);
+  console.log(`📁 Uploads directory: ${config.paths.uploads}`);
+  console.log(`🧹 Auto-cleanup: ${config.cleanup.autoCleanupEnabled ? 'enabled' : 'disabled'}`);
+  console.log(`🌐 CORS enabled for: ${Array.isArray(config.cors.origin) ? config.cors.origin.join(', ') : config.cors.origin}`);
+  if (config.app.host === '0.0.0.0') {
+      console.log(`📱 Accessible from any network interface`);
+      console.log(`💡 For mobile testing, use your network IP instead of localhost`);
+  }
 });
 
 // Harden server timeouts to better handle cold starts and processing
 try {
-    // Keep sockets open long enough for render/load balancers
-    server.keepAliveTimeout = 65_000; // 65s
-    server.headersTimeout = 66_000;   // must be > keepAliveTimeout
-    server.requestTimeout = 120_000;  // 120s for processing endpoints
-    console.log('⏱️ Server timeouts configured:', {
-        keepAliveTimeout: server.keepAliveTimeout,
-        headersTimeout: server.headersTimeout,
-        requestTimeout: server.requestTimeout,
-    });
+  // Keep sockets open long enough for render/load balancers
+  server.keepAliveTimeout = 65_000; // 65s
+  server.headersTimeout = 66_000;   // must be > keepAliveTimeout
+  server.requestTimeout = 120_000;  // 120s for processing endpoints
+  console.log('⏱️ Server timeouts configured:', {
+      keepAliveTimeout: server.keepAliveTimeout,
+      headersTimeout: server.headersTimeout,
+      requestTimeout: server.requestTimeout,
+  });
 } catch (e) {
-    console.warn('⚠️ Could not set server timeouts:', e?.message);
+  console.warn('⚠️ Could not set server timeouts:', e?.message);
 }
 
 // Global error handlers

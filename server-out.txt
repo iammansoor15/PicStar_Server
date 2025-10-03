@@ -1,0 +1,16 @@
+[dotenv@17.2.3] injecting env (20) from .env -- tip: 🛠️  run anywhere with `dotenvx run -- yourcommand`
+[dotenv@17.2.3] injecting env (0) from .env -- tip: 🔑 add access controls to secrets: https://dotenvx.com/ops
+[dotenv@17.2.3] injecting env (0) from .env -- tip: ⚙️  override existing env vars with { override: true }
+🧹 Auto-cleanup is disabled (AUTO_CLEANUP_ENABLED=false)
+⏱️ Server timeouts configured: {
+  keepAliveTimeout: 65000,
+  headersTimeout: 66000,
+  requestTimeout: 120000
+}
+🚀 Server running in production mode on 0.0.0.0:10000
+🌐 Server URL: http://192.168.29.29:10000
+📁 Uploads directory: D:\Projects\Narayana_App\server\uploads
+🧹 Auto-cleanup: disabled
+🌐 CORS enabled for: *
+📱 Accessible from any network interface
+💡 For mobile testing, use your network IP instead of localhost

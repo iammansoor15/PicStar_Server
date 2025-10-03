@@ -1,0 +1,91 @@
+2025-10-02T20:52:24.473Z router:route new '/health'
+2025-10-02T20:52:24.475Z router:layer new '/health'
+2025-10-02T20:52:24.476Z router:route get /health
+2025-10-02T20:52:24.477Z router:layer new '/'
+2025-10-02T20:52:24.478Z router:route new '/test'
+2025-10-02T20:52:24.479Z router:layer new '/test'
+2025-10-02T20:52:24.480Z router:route post /test
+2025-10-02T20:52:24.481Z router:layer new '/'
+2025-10-02T20:52:24.482Z router:route new '/'
+2025-10-02T20:52:24.483Z router:layer new '/'
+2025-10-02T20:52:24.484Z router:route get /
+2025-10-02T20:52:24.485Z router:layer new '/'
+2025-10-02T20:52:24.486Z router:route new '/process'
+2025-10-02T20:52:24.487Z router:layer new '/process'
+2025-10-02T20:52:24.488Z router:route post /process
+2025-10-02T20:52:24.488Z router:layer new '/'
+2025-10-02T20:52:24.488Z router:route post /process
+2025-10-02T20:52:24.489Z router:layer new '/'
+2025-10-02T20:52:24.489Z router:route post /process
+2025-10-02T20:52:24.489Z router:layer new '/'
+2025-10-02T20:52:24.489Z router:route new '/process-batch'
+2025-10-02T20:52:24.490Z router:layer new '/process-batch'
+2025-10-02T20:52:24.490Z router:route post /process-batch
+2025-10-02T20:52:24.490Z router:layer new '/'
+2025-10-02T20:52:24.490Z router:route post /process-batch
+2025-10-02T20:52:24.490Z router:layer new '/'
+2025-10-02T20:52:24.491Z router:route post /process-batch
+2025-10-02T20:52:24.491Z router:layer new '/'
+2025-10-02T20:52:24.491Z router:route post /process-batch
+2025-10-02T20:52:24.491Z router:layer new '/'
+2025-10-02T20:52:24.491Z router:route new '/status/:jobId'
+2025-10-02T20:52:24.492Z router:layer new '/status/:jobId'
+2025-10-02T20:52:24.492Z router:route get /status/:jobId
+2025-10-02T20:52:24.492Z router:layer new '/'
+2025-10-02T20:52:24.492Z router:route new '/cleanup-stats'
+2025-10-02T20:52:24.493Z router:layer new '/cleanup-stats'
+2025-10-02T20:52:24.493Z router:route get /cleanup-stats
+2025-10-02T20:52:24.493Z router:layer new '/'
+2025-10-02T20:52:24.866Z router:route new '/upload'
+2025-10-02T20:52:24.866Z router:layer new '/upload'
+2025-10-02T20:52:24.866Z router:route post /upload
+2025-10-02T20:52:24.866Z router:layer new '/'
+2025-10-02T20:52:24.867Z router:route post /upload
+2025-10-02T20:52:24.867Z router:layer new '/'
+2025-10-02T20:52:24.867Z router:route new '/'
+2025-10-02T20:52:24.867Z router:layer new '/'
+2025-10-02T20:52:24.868Z router:route get /
+2025-10-02T20:52:24.868Z router:layer new '/'
+2025-10-02T20:52:24.868Z router:route new '/latest/:category'
+2025-10-02T20:52:24.868Z router:layer new '/latest/:category'
+2025-10-02T20:52:24.868Z router:route get /latest/:category
+2025-10-02T20:52:24.869Z router:layer new '/'
+2025-10-02T20:52:24.871Z express:application set "x-powered-by" to true
+2025-10-02T20:52:24.871Z express:application set "etag" to 'weak'
+2025-10-02T20:52:24.871Z express:application set "etag fn" to [Function: generateETag]
+2025-10-02T20:52:24.871Z express:application set "env" to 'production'
+2025-10-02T20:52:24.872Z express:application set "query parser" to 'simple'
+2025-10-02T20:52:24.872Z express:application set "query parser fn" to [Function: parse]
+2025-10-02T20:52:24.872Z express:application set "subdomain offset" to 2
+2025-10-02T20:52:24.872Z express:application set "trust proxy" to false
+2025-10-02T20:52:24.873Z express:application set "trust proxy fn" to [Function: trustNone]
+2025-10-02T20:52:24.873Z express:application booting in production mode
+2025-10-02T20:52:24.873Z express:application set "view" to [Function: View]
+2025-10-02T20:52:24.873Z express:application set "views" to 'D:\\Projects\\Narayana_App\\server\\views'
+2025-10-02T20:52:24.873Z express:application set "jsonp callback name" to 'callback'
+2025-10-02T20:52:24.874Z express:application set "view cache" to true
+2025-10-02T20:52:24.874Z express:application set "trust proxy" to 1
+2025-10-02T20:52:24.874Z express:application set "trust proxy fn" to [Function (anonymous)]
+2025-10-02T20:52:24.875Z router use '/' <anonymous>
+2025-10-02T20:52:24.875Z router:layer new '/'
+2025-10-02T20:52:24.875Z router use '/' requestLogger
+2025-10-02T20:52:24.875Z router:layer new '/'
+2025-10-02T20:52:24.876Z router use '/' corsMiddleware
+2025-10-02T20:52:24.876Z router:layer new '/'
+2025-10-02T20:52:24.876Z router use '/' jsonParser
+2025-10-02T20:52:24.876Z router:layer new '/'
+2025-10-02T20:52:24.877Z router use '/' urlencodedParser
+2025-10-02T20:52:24.877Z router:layer new '/'
+2025-10-02T20:52:24.877Z router use '/uploads' serveStatic
+2025-10-02T20:52:24.878Z router:layer new '/uploads'
+2025-10-02T20:52:24.878Z router use '/' router
+2025-10-02T20:52:24.878Z router:layer new '/'
+2025-10-02T20:52:24.878Z router use '/api/templates' router
+2025-10-02T20:52:24.878Z router:layer new '/api/templates'
+2025-10-02T20:52:24.879Z router use '/' router
+2025-10-02T20:52:24.879Z router:layer new '/'
+2025-10-02T20:52:24.879Z router use '/' errorHandler
+2025-10-02T20:52:24.879Z router:layer new '/'
+⚠️ tlsAllowInvalidCertificates enabled for Mongoose. Use only for local testing.
+❌ Failed to connect to MongoDB: Could not connect to any servers in your MongoDB Atlas cluster. One common reason is that you're trying to access the database from an IP that isn't whitelisted. Make sure your current IP address is on your Atlas cluster's IP whitelist: https://www.mongodb.com/docs/atlas/security-whitelist/
+⚠️ Proceeding without MongoDB. Template uploads will skip DB persistence.
