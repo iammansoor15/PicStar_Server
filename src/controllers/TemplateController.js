@@ -19,6 +19,16 @@ class TemplateController {
         filename: req.file.originalname,
         size: req.file.size
       });
+      // Debug incoming text fields
+      try {
+        console.log('📝 Multipart fields received:', Object.keys(req.body || {}));
+        if (req.body?.photo_container_axis) {
+          console.log('🧭 photo_container_axis (raw):', req.body.photo_container_axis);
+        }
+        if (req.body?.photo_x || req.body?.photo_y) {
+          console.log('🧭 photo_x/photo_y:', req.body.photo_x, req.body.photo_y);
+        }
+      } catch {}
 
 // Upload to Cloudinary
       const uploadResult = await cloudinary.uploader.upload(req.file.path, {
@@ -38,10 +48,30 @@ class TemplateController {
 
       const normalizedCategory = category.toLowerCase().trim();
 
+      // Parse optional axis from multipart fields
+      let photoAxis = { x: 0, y: 0 };
+      try {
+        if (typeof req.body.photo_container_axis === 'string') {
+          const parsed = JSON.parse(req.body.photo_container_axis);
+          if (Number.isFinite(parsed.x) && Number.isFinite(parsed.y)) {
+            photoAxis = { x: Number(parsed.x), y: Number(parsed.y) };
+          }
+        } else if (req.body.photo_x !== undefined && req.body.photo_y !== undefined) {
+          const x = Number(req.body.photo_x);
+          const y = Number(req.body.photo_y);
+          if (Number.isFinite(x) && Number.isFinite(y)) {
+            photoAxis = { x, y };
+          }
+        }
+      } catch (e) {
+        console.warn('Invalid photo_container_axis provided, using defaults. Error:', e?.message || e);
+      }
+
       // Persist to MongoDB (serial_no auto-increments per category)
       const doc = await Template.create({
         image_url: uploadResult.secure_url,
         category: normalizedCategory,
+        photo_container_axis: photoAxis,
       });
 
       return res.status(201).json({
@@ -51,6 +81,7 @@ class TemplateController {
           serial_no: doc.serial_no,
           category: doc.category,
           created_at: doc.created_at,
+          photo_container_axis: doc.photo_container_axis,
         }
       });
     } catch (error) {
