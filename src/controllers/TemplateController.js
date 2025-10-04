@@ -48,9 +48,11 @@ class TemplateController {
 
       const normalizedCategory = category.toLowerCase().trim();
 
-      // Parse optional axis from multipart fields
+      // Parse optional axes from multipart fields
       let photoAxis = { x: 0, y: 0 };
+      let textAxis = { x: 0, y: 0 };
       try {
+        // Photo axis (JSON or flat fields)
         if (typeof req.body.photo_container_axis === 'string') {
           const parsed = JSON.parse(req.body.photo_container_axis);
           if (Number.isFinite(parsed.x) && Number.isFinite(parsed.y)) {
@@ -63,8 +65,21 @@ class TemplateController {
             photoAxis = { x, y };
           }
         }
+        // Text axis (JSON or flat fields)
+        if (typeof req.body.text_container_axis === 'string') {
+          const tParsed = JSON.parse(req.body.text_container_axis);
+          if (Number.isFinite(tParsed.x) && Number.isFinite(tParsed.y)) {
+            textAxis = { x: Number(tParsed.x), y: Number(tParsed.y) };
+          }
+        } else if (req.body.text_x !== undefined && req.body.text_y !== undefined) {
+          const tx = Number(req.body.text_x);
+          const ty = Number(req.body.text_y);
+          if (Number.isFinite(tx) && Number.isFinite(ty)) {
+            textAxis = { x: tx, y: ty };
+          }
+        }
       } catch (e) {
-        console.warn('Invalid photo_container_axis provided, using defaults. Error:', e?.message || e);
+        console.warn('Invalid axis provided, using defaults. Error:', e?.message || e);
       }
 
       // Persist to MongoDB (serial_no auto-increments per category)
@@ -72,6 +87,7 @@ class TemplateController {
         image_url: uploadResult.secure_url,
         category: normalizedCategory,
         photo_container_axis: photoAxis,
+        text_container_axis: textAxis,
       });
 
       return res.status(201).json({
@@ -82,6 +98,7 @@ class TemplateController {
           category: doc.category,
           created_at: doc.created_at,
           photo_container_axis: doc.photo_container_axis,
+          text_container_axis: doc.text_container_axis,
         }
       });
     } catch (error) {

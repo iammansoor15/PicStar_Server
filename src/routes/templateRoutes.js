@@ -34,6 +34,11 @@ const upload = multer({
   }
 });
 
+// Health for templates API (used by mobile probes)
+router.get('/health', (req, res) => {
+  res.status(200).json({ status: 'ok', service: 'templates', timestamp: new Date().toISOString() });
+});
+
 // POST /api/templates/upload - Upload image to Cloudinary
 router.post('/upload', upload.single('image'), TemplateController.uploadAndSaveTemplate);
 
