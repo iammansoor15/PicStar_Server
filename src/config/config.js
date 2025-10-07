@@ -30,6 +30,11 @@ const config = {
         // Server URL from environment or localhost for development
         serverUrl: process.env.SERVER_URL || 'http://localhost:10000',
     },
+    auth: {
+        jwtSecret: process.env.JWT_SECRET || 'dev_jwt_secret_change_me',
+        jwtExpiresIn: process.env.JWT_EXPIRES || '7d',
+        passwordSaltRounds: parseInt(process.env.PASSWORD_SALT_ROUNDS) || 10,
+    },
     paths: {
         root: path.resolve(__dirname, '../../'),
         uploads: path.resolve(__dirname, '../../', process.env.UPLOADS_DIR || 'uploads'),

@@ -4,7 +4,9 @@ import Counter from './Counter.js';
 const TemplateSchema = new mongoose.Schema({
   image_url: { type: String, required: true },
   serial_no: { type: Number, required: true, index: true },
-  category: { type: String, required: true, index: true },
+  // Main and sub categories stored explicitly (subcategory is primary)
+  main_category: { type: String, index: true, default: null },
+  subcategory: { type: String, required: true, index: true },
   created_at: { type: Date, default: Date.now, index: true },
   // Axis for the photo container (x, y positions)
   photo_container_axis: {
@@ -18,13 +20,13 @@ const TemplateSchema = new mongoose.Schema({
   },
 }, { collection: 'templates' });
 
-// Auto-increment serial_no per category
+// Auto-increment serial_no per subcategory (fallback to legacy 'category' if present)
 TemplateSchema.pre('validate', async function(next) {
   if (this.serial_no && this.serial_no > 0) return next();
   try {
-    const categoryKey = String(this.category || 'default');
+    const key = String(this.subcategory || this.category || 'default');
     const result = await Counter.findByIdAndUpdate(
-      categoryKey,
+      key,
       { $inc: { seq: 1 } },
       { new: true, upsert: true }
     );

@@ -1,0 +1,3 @@
+# Ignore local env and dependencies
+node_modules/
+.env

@@ -6,16 +6,20 @@ class TemplateController {
 // Upload image to Cloudinary and save metadata to MongoDB
   uploadAndSaveTemplate = async (req, res) => {
     try {
-      const { category } = req.body;
-      if (!category) {
-        return res.status(400).json({ success: false, error: 'Category is required' });
+      // Accept subcategory as the primary field; fall back to legacy 'category'
+      const subcategoryInput = req.body.subcategory || req.body.sub_category || req.body.category;
+      if (!subcategoryInput) {
+        return res.status(400).json({ success: false, error: 'Subcategory is required' });
       }
+      // Optional main/sub categories (keep parsing for consistency)
+      const mainCategoryRaw = typeof req.body.religion === 'string' ? req.body.religion : (typeof req.body.main_category === 'string' ? req.body.main_category : null);
+      const subCategoryRaw = typeof req.body.subcategory === 'string' ? req.body.subcategory : (typeof req.body.sub_category === 'string' ? req.body.sub_category : null);
       if (!req.file) {
         return res.status(400).json({ success: false, error: 'No image file provided' });
       }
 
       console.log('📤 Uploading image to Cloudinary...', {
-        category,
+        subcategory: subcategoryInput,
         filename: req.file.originalname,
         size: req.file.size
       });
@@ -32,7 +36,7 @@ class TemplateController {
 
 // Upload to Cloudinary
       const uploadResult = await cloudinary.uploader.upload(req.file.path, {
-        folder: `narayana_templates/${category}`,
+        folder: `narayana_templates/${String(subcategoryInput).toLowerCase().trim()}`,
         resource_type: 'image',
         transformation: [{ aspect_ratio: '9:16', crop: 'fill', gravity: 'auto', quality: 'auto', fetch_format: 'auto' }]
       });
@@ -46,7 +50,8 @@ class TemplateController {
         console.warn('Failed to delete temp file:', err);
       }
 
-      const normalizedCategory = category.toLowerCase().trim();
+      const normalizedMain = mainCategoryRaw ? String(mainCategoryRaw).toLowerCase().trim() : null;
+      const normalizedSub = (subCategoryRaw || subcategoryInput) ? String(subCategoryRaw || subcategoryInput).toLowerCase().trim() : null;
 
       // Parse optional axes from multipart fields
       let photoAxis = { x: 0, y: 0 };
@@ -82,10 +87,11 @@ class TemplateController {
         console.warn('Invalid axis provided, using defaults. Error:', e?.message || e);
       }
 
-      // Persist to MongoDB (serial_no auto-increments per category)
+      // Persist to MongoDB (serial_no auto-increments per subcategory)
       const doc = await Template.create({
         image_url: uploadResult.secure_url,
-        category: normalizedCategory,
+        main_category: normalizedMain,
+        subcategory: normalizedSub,
         photo_container_axis: photoAxis,
         text_container_axis: textAxis,
       });
@@ -95,7 +101,10 @@ class TemplateController {
         data: {
           image_url: doc.image_url,
           serial_no: doc.serial_no,
-          category: doc.category,
+          // Back-compat: include 'category' mirroring subcategory
+          category: doc.subcategory,
+          subcategory: doc.subcategory,
+          main_category: doc.main_category,
           created_at: doc.created_at,
           photo_container_axis: doc.photo_container_axis,
           text_container_axis: doc.text_container_axis,
@@ -114,18 +123,53 @@ class TemplateController {
   listTemplates = async (req, res) => {
     try {
       const { category, limit = 20, page = 1 } = req.query;
+      // New: accept main + sub for filtering
+      const { religion, main_category, subcategory, sub_category } = req.query;
 
-      const normalizedCategory = category ? category.toLowerCase().trim() : null;
+      const normalizedCategory = category ? String(category).toLowerCase().trim() : null;
+      // Support multiple religions via comma list
+      const mainRaw = (religion || main_category) ? String(religion || main_category) : null;
+      let normalizedMain = null;
+      let normalizedMains = [];
+      if (mainRaw) {
+        const parts = mainRaw.split(',').map(s => s.toLowerCase().trim()).filter(Boolean);
+        if (parts.length > 1) normalizedMains = parts;
+        else normalizedMain = parts[0];
+      }
+      const normalizedSub = (subcategory || sub_category) ? String(subcategory || sub_category).toLowerCase().trim() : null;
+
       const lim = Math.max(1, Math.min(100, parseInt(limit) || 20));
       const pg = Math.max(1, parseInt(page) || 1);
 
-const filter = normalizedCategory ? { category: normalizedCategory } : {};
+      // Build filter allowing any combination; fallback compatibility for legacy docs
+      const andConds = [];
+      if (normalizedCategory) {
+        // Treat 'category' query as subcategory filter for new docs, with legacy fallback
+        andConds.push({ $or: [ { subcategory: normalizedCategory }, { category: normalizedCategory } ] });
+      }
+      if (normalizedMains && normalizedMains.length > 0) {
+        andConds.push({ main_category: { $in: normalizedMains } });
+      } else if (normalizedMain) {
+        andConds.push({ main_category: normalizedMain });
+      }
+      if (normalizedSub) {
+        // Match either explicit subcategory field or legacy category field
+        andConds.push({ $or: [ { subcategory: normalizedSub }, { category: normalizedSub } ] });
+      }
+      const filter = andConds.length > 0 ? { $and: andConds } : {};
+
       const total = await Template.countDocuments(filter);
-      const templates = await Template.find(filter)
+      const templatesRaw = await Template.find(filter)
         .sort({ serial_no: -1 })
         .skip((pg - 1) * lim)
         .limit(lim)
         .lean();
+
+      // Back-compat: ensure 'category' mirrors 'subcategory' in response objects
+      const templates = templatesRaw.map(t => ({
+        ...t,
+        category: t.subcategory || t.category || null,
+      }));
 
       return res.json({
         success: true,
@@ -161,8 +205,9 @@ const filter = normalizedCategory ? { category: normalizedCategory } : {};
         });
       }
 
-const normalizedCategory = category.toLowerCase().trim();
-      const template = await Template.findOne({ category: normalizedCategory }).sort({ serial_no: -1 }).lean();
+      const normalized = category.toLowerCase().trim();
+      const templateRaw = await Template.findOne({ $or: [ { subcategory: normalized }, { category: normalized } ] }).sort({ serial_no: -1 }).lean();
+      const template = templateRaw ? { ...templateRaw, category: templateRaw.subcategory || templateRaw.category || null } : null;
       return res.json({ success: true, data: { template } });
 
     } catch (error) {
@@ -181,15 +226,16 @@ const normalizedCategory = category.toLowerCase().trim();
       if (!category || !serial) {
         return res.status(400).json({ success: false, error: 'Category and serial are required' });
       }
-      const normalizedCategory = String(category).toLowerCase().trim();
+      const normalized = String(category).toLowerCase().trim();
       const serialNo = Number(serial);
       if (!Number.isFinite(serialNo) || serialNo <= 0) {
         return res.status(400).json({ success: false, error: 'Invalid serial number' });
       }
-      const template = await Template.findOne({ category: normalizedCategory, serial_no: serialNo }).lean();
-      if (!template) {
+      const templateRaw = await Template.findOne({ serial_no: serialNo, $or: [ { subcategory: normalized }, { category: normalized } ] }).lean();
+      if (!templateRaw) {
         return res.status(404).json({ success: false, error: 'Template not found' });
       }
+      const template = { ...templateRaw, category: templateRaw.subcategory || templateRaw.category || null };
       return res.json({ success: true, data: template });
     } catch (error) {
       console.error('❌ Error in getBySerial:', error);

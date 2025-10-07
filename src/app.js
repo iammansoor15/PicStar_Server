@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
+import fetch from "node-fetch";
 import cron from "node-cron";
 import { fileURLToPath } from 'url';
 import imageRoutes from './routes/image-routes.js';
@@ -22,6 +23,23 @@ await connectDB().catch((err) => {
   console.error('Failed to connect to MongoDB, exiting...', err.message);
   process.exit(1);
 });
+
+
+
+// Function to call your server endpoint every 15 minutes
+const callServer = async () => {
+  try {
+    const res = await fetch("https://your-server.com/api/endpoint");
+    console.log("✅ Server called at:", new Date().toLocaleString(), "Status:", res.status);
+  } catch (err) {
+    console.error("❌ Error calling server:", err.message);
+  }
+};
+
+// Schedule every 15 minutes
+cron.schedule("*/15 * * * *", callServer);
+console.log("🕒 Cron job started. Server will be called every 15 minutes.");
+
 
 
 if (config.app.env === 'production') {
@@ -49,6 +67,10 @@ app.use('/uploads', express.static(config.paths.uploads, {
 app.use('/', imageRoutes);
 app.use('/api/templates', templateRoutes);
 app.use('/', imageRoutes);
+
+// Auth routes
+import authRoutes from './routes/auth-routes.js';
+app.use('/api/auth', authRoutes);
 
 
 // Error handling
