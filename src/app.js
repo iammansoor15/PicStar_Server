@@ -26,24 +26,20 @@ await connectDB().catch((err) => {
 
 
 
-// Optional keep-alive ping (disabled by default). Controlled via env.
-const KEEP_ALIVE_ENABLED = String(process.env.KEEP_ALIVE_ENABLED || '').toLowerCase() === 'true';
-const KEEP_ALIVE_URL = process.env.KEEP_ALIVE_URL || `${config.app.serverUrl}/health`;
-const KEEP_ALIVE_INTERVAL_MINUTES = parseInt(process.env.KEEP_ALIVE_INTERVAL_MINUTES || '5');
+cron.schedule("*/15 * * * *", async () => {
+  try {
+    console.log("⏳ Auto-fetch started at:", new Date().toLocaleString());
 
-if (KEEP_ALIVE_ENABLED) {
-  const every = Math.max(1, KEEP_ALIVE_INTERVAL_MINUTES);
-  cron.schedule(`*/${every} * * * *`, async () => {
-    try {
-      const res = await fetch(KEEP_ALIVE_URL);
-      console.log("✅ Keep-alive ping:", KEEP_ALIVE_URL, "Status:", res.status);
-    } catch (err) {
-      console.error("❌ Keep-alive error:", err.message);
-    }
-  });
-  console.log(`🕒 Keep-alive cron started. Target: ${KEEP_ALIVE_URL} every ${every}m`);
-}
+    const res = await fetch("https://your-api-url-or-endpoint.com/data");
+    const data = await res.json();
 
+    console.log("✅ Auto-fetch successful:", data);
+    // You can store it in DB, cache, or trigger another function here
+
+  } catch (err) {
+    console.error("❌ Auto-fetch failed:", err.message);
+  }
+});
 
 
 if (config.app.env === 'production') {
