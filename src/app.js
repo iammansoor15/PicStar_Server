@@ -26,19 +26,23 @@ await connectDB().catch((err) => {
 
 
 
-// Function to call your server endpoint every 15 minutes
-const callServer = async () => {
-  try {
-    const res = await fetch("https://your-server.com/api/endpoint");
-    console.log("✅ Server called at:", new Date().toLocaleString(), "Status:", res.status);
-  } catch (err) {
-    console.error("❌ Error calling server:", err.message);
-  }
-};
+// Optional keep-alive ping (disabled by default). Controlled via env.
+const KEEP_ALIVE_ENABLED = String(process.env.KEEP_ALIVE_ENABLED || '').toLowerCase() === 'true';
+const KEEP_ALIVE_URL = process.env.KEEP_ALIVE_URL || `${config.app.serverUrl}/health`;
+const KEEP_ALIVE_INTERVAL_MINUTES = parseInt(process.env.KEEP_ALIVE_INTERVAL_MINUTES || '5');
 
-// Schedule every 15 minutes
-cron.schedule("*/15 * * * *", callServer);
-console.log("🕒 Cron job started. Server will be called every 15 minutes.");
+if (KEEP_ALIVE_ENABLED) {
+  const every = Math.max(1, KEEP_ALIVE_INTERVAL_MINUTES);
+  cron.schedule(`*/${every} * * * *`, async () => {
+    try {
+      const res = await fetch(KEEP_ALIVE_URL);
+      console.log("✅ Keep-alive ping:", KEEP_ALIVE_URL, "Status:", res.status);
+    } catch (err) {
+      console.error("❌ Keep-alive error:", err.message);
+    }
+  });
+  console.log(`🕒 Keep-alive cron started. Target: ${KEEP_ALIVE_URL} every ${every}m`);
+}
 
 
 
@@ -96,18 +100,6 @@ ensureDirectoryExists(config.paths.logs);
 
 
 
-// Keep-alive ping (only in production)
-if (config.app.env === 'production') {
-  cron.schedule("*/15s * * * *", async () => {
-    try {
-      const target = config.app.serverUrl || 'https://picstar-server.onrender.com';
-      const res = await fetch(target);
-      console.log("✅ Pinged server:", res.status);
-    } catch (err) {
-      console.error("❌ Error pinging server:", err.message);
-    }
-  });
-}
 
 // Start server with environment-configured host
 const server = app.listen(config.app.port, config.app.host, () => {

@@ -205,8 +205,17 @@ class TemplateController {
         });
       }
 
-      const normalized = category.toLowerCase().trim();
-      const templateRaw = await Template.findOne({ $or: [ { subcategory: normalized }, { category: normalized } ] }).sort({ serial_no: -1 }).lean();
+      const normalized = String(category).toLowerCase().trim();
+      // Support both main and subcategory lookups to be flexible with client usage.
+      // Order by serial_no desc to get the newest.
+      const templateRaw = await Template.findOne({
+        $or: [
+          { main_category: normalized }, // e.g., hindu, muslim, christian
+          { subcategory: normalized },    // e.g., congratulations, birthday
+          { category: normalized }        // legacy fallback
+        ]
+      }).sort({ serial_no: -1 }).lean();
+
       const template = templateRaw ? { ...templateRaw, category: templateRaw.subcategory || templateRaw.category || null } : null;
       return res.json({ success: true, data: { template } });
 
@@ -240,6 +249,97 @@ class TemplateController {
     } catch (error) {
       console.error('❌ Error in getBySerial:', error);
       return res.status(500).json({ success: false, error: error.message || 'Failed to fetch template by serial' });
+    }
+  }
+
+  // List by main (MongoDB)
+  listByMain = async (req, res) => {
+    try {
+      const main = String(req.params.main || '').toLowerCase().trim();
+      if (!main) return res.status(400).json({ success: false, error: 'main category is required' });
+
+      const lim = Math.max(1, Math.min(100, parseInt(req.query.limit) || 20));
+      const pg = Math.max(1, parseInt(req.query.page) || 1);
+
+      const filter = { main_category: main };
+
+      const total = await Template.countDocuments(filter);
+      const templatesRaw = await Template.find(filter)
+        .sort({ serial_no: -1 })
+        .skip((pg - 1) * lim)
+        .limit(lim)
+        .lean();
+
+      const templates = templatesRaw.map(t => ({ ...t, category: t.subcategory || t.category || null }));
+
+      return res.json({
+        success: true,
+        data: {
+          templates,
+          pagination: { page: pg, limit: lim, total, pages: Math.ceil(total / lim) }
+        }
+      });
+    } catch (error) {
+      console.error('❌ Error in listByMain:', error);
+      return res.status(500).json({ success: false, error: error?.message || 'Failed to list templates by main category' });
+    }
+  }
+
+  // List by main + subcategory (MongoDB)
+  listByMainAndSub = async (req, res) => {
+    try {
+      const main = String(req.params.main || '').toLowerCase().trim();
+      const sub = String(req.params.sub || '').toLowerCase().trim();
+      if (!main || !sub) return res.status(400).json({ success: false, error: 'main and subcategory are required' });
+
+      const lim = Math.max(1, Math.min(100, parseInt(req.query.limit) || 20));
+      const pg = Math.max(1, parseInt(req.query.page) || 1);
+
+      const filter = {
+        main_category: main,
+        $or: [ { subcategory: sub }, { category: sub } ],
+      };
+
+      const total = await Template.countDocuments(filter);
+      const templatesRaw = await Template.find(filter)
+        .sort({ serial_no: -1 })
+        .skip((pg - 1) * lim)
+        .limit(lim)
+        .lean();
+
+      const templates = templatesRaw.map(t => ({ ...t, category: t.subcategory || t.category || null }));
+
+      return res.json({
+        success: true,
+        data: {
+          templates,
+          pagination: { page: pg, limit: lim, total, pages: Math.ceil(total / lim) }
+        }
+      });
+    } catch (error) {
+      console.error('❌ Error in listByMainAndSub:', error);
+      return res.status(500).json({ success: false, error: error?.message || 'Failed to list templates by main and subcategory' });
+    }
+  }
+
+  // Latest by main + subcategory (MongoDB)
+  getLatestByMainAndSub = async (req, res) => {
+    try {
+      const { main, sub } = req.params;
+      if (!main || !sub) {
+        return res.status(400).json({ success: false, error: 'main and sub are required' });
+      }
+      const m = String(main).toLowerCase().trim();
+      const s = String(sub).toLowerCase().trim();
+      const templateRaw = await Template.findOne({
+        main_category: m,
+        $or: [ { subcategory: s }, { category: s } ] // legacy fallback
+      }).sort({ serial_no: -1 }).lean();
+      const template = templateRaw ? { ...templateRaw, category: templateRaw.subcategory || templateRaw.category || null } : null;
+      return res.json({ success: true, data: { template } });
+    } catch (error) {
+      console.error('❌ Error in getLatestByMainAndSub:', error);
+      return res.status(500).json({ success: false, error: error.message || 'Failed to get latest by main and subcategory' });
     }
   }
 }

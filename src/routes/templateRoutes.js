@@ -8,7 +8,7 @@ const router = express.Router();
 // Configure multer for file uploads
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-cb(null, 'uploads/');
+    cb(null, 'uploads/');
   },
   filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
@@ -45,7 +45,13 @@ router.post('/upload', upload.single('image'), TemplateController.uploadAndSaveT
 // GET /api/templates - List all templates (with optional category filter)
 router.get('/', TemplateController.listTemplates);
 
-// GET /api/templates/latest/:category - Get latest template for a category
+// New: GET by main category and optional subcategory using path params
+router.get('/category/:main', TemplateController.listByMain);
+router.get('/category/:main/:sub', TemplateController.listByMainAndSub);
+
+// New: Latest by main + subcategory must be declared before single-param latest
+router.get('/latest/:main/:sub', TemplateController.getLatestByMainAndSub);
+// GET /api/templates/latest/:category - Get latest template for a category (main or sub)
 router.get('/latest/:category', TemplateController.getLatestTemplate);
 
 // GET /api/templates/by-serial/:category/:serial - Get a template by category and serial number
