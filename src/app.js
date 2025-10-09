@@ -30,7 +30,7 @@ cron.schedule("*/15 * * * *", async () => {
   try {
     console.log("⏳ Auto-fetch started at:", new Date().toLocaleString());
 
-    const res = await fetch("https://your-api-url-or-endpoint.com/data");
+    const res = await fetch("https://picstar-server.onrender.com");
     const data = await res.json();
 
     console.log("✅ Auto-fetch successful:", data);
