@@ -119,6 +119,65 @@ class TemplateController {
     }
   }
 
+  // Batch fetch by subcategory/main with ordered serial_no and optional start/limit
+  // New non-breaking endpoint: GET /api/templates/batch
+  // Query params:
+  // - subcategory or category (legacy)
+  // - religion or main_category (optional)
+  // - start_serial (default 1)
+  // - limit (default 5)
+  // - order (asc|desc, default asc)
+  batchBySubcategory = async (req, res) => {
+    try {
+      const { subcategory, sub_category, category, religion, main_category } = req.query || {};
+      const sub = (subcategory || sub_category || category || '').toString().toLowerCase().trim();
+      const main = (religion || main_category || '').toString().toLowerCase().trim();
+      if (!sub) {
+        return res.status(400).json({ success: false, error: 'subcategory is required' });
+      }
+      const startSerialRaw = req.query?.start_serial ?? req.query?.startSerial ?? 1;
+      const limitRaw = req.query?.limit ?? 5;
+      const order = (req.query?.order || 'asc').toString().toLowerCase() === 'desc' ? 'desc' : 'asc';
+      const startSerial = Math.max(1, parseInt(startSerialRaw, 10) || 1);
+      const limit = Math.max(1, Math.min(100, parseInt(limitRaw, 10) || 5));
+
+      // Build filter with legacy compatibility for subcategory matching
+      const andConds = [ { $or: [ { subcategory: sub }, { category: sub } ] } ];
+      if (main) andConds.push({ main_category: main });
+      // Restrict serial range to reduce scan and ensure deterministic slice
+      andConds.push({ serial_no: { $gte: startSerial, $lt: startSerial + limit + 1000 } }); // generous upper window
+      const filter = { $and: andConds };
+
+      const sort = { serial_no: order === 'desc' ? -1 : 1 };
+      // Fetch up to a larger window then trim to the exact [startSerial..startSerial+limit-1]
+      const docs = await Template.find(filter)
+        .sort(sort)
+        .limit(limit * 3) // overfetch to account for gaps in serials
+        .lean();
+
+      const wantedSet = new Set(Array.from({ length: limit }, (_, i) => startSerial + i));
+      const picked = [];
+      for (const d of docs) {
+        const sn = Number(d?.serial_no);
+        if (wantedSet.has(sn)) picked.push(d);
+        if (picked.length >= limit) break;
+      }
+
+      // Shape response to include combination requested
+      const items = picked.map(t => ({
+        category: t.main_category ?? null,
+        subcategory: t.subcategory || t.category || null,
+        image_url: t.image_url,
+        serial_no: t.serial_no,
+      }));
+
+      return res.json({ success: true, data: { templates: items, meta: { subcategory: sub, main_category: main || null, start_serial: startSerial, limit, order } } });
+    } catch (error) {
+      console.error('❌ Error in batchBySubcategory:', error);
+      return res.status(500).json({ success: false, error: error?.message || 'Failed to fetch batch' });
+    }
+  }
+
 // Get all templates or filter by category (from MongoDB)
   listTemplates = async (req, res) => {
     try {
