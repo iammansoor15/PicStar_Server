@@ -1,8 +1,6 @@
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
-import fetch from "node-fetch";
-import cron from "node-cron";
 import { fileURLToPath } from 'url';
 import imageRoutes from './routes/image-routes.js';
 import templateRoutes from './routes/templateRoutes.js';
@@ -23,24 +21,6 @@ await connectDB().catch((err) => {
   console.error('Failed to connect to MongoDB, exiting...', err.message);
   process.exit(1);
 });
-
-
-
-cron.schedule("*/15 * * * *", async () => {
-  try {
-    console.log("⏳ Auto-fetch started at:", new Date().toLocaleString());
-
-    const res = await fetch("https://picstar-server.onrender.com/health");
-    const data = await res.json();
-
-    console.log("✅ Auto-fetch successful:", data);
-    // You can store it in DB, cache, or trigger another function here
-
-  } catch (err) {
-    console.error("❌ Auto-fetch failed:", err.message);
-  }
-});
-
 
 if (config.app.env === 'production') {
     app.set('trust proxy', 1); // Trust first proxy (Render.com)
