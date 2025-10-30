@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>PicStar Uploader</title>
+  <style>
+    :root { --bg:#0b0f14; --panel:#111827; --txt:#e5e7eb; --muted:#9ca3af; --border:#1f2937; --accent:#6366f1; }
+    body { font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 0; padding: 32px 20px; min-height: 100vh; line-height: 1.5; color: var(--txt); background: radial-gradient(900px 500px at 10% -10%, rgba(99,102,241,.15), transparent 60%), var(--bg); }
+    .container { max-width: 900px; margin: 0 auto; }
+    h1 { margin-bottom: 0.25rem; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; margin-top: 1rem; }
+    a.card { display: block; padding: 1rem; border: 1px solid var(--border); border-radius: 12px; text-decoration: none; color: var(--txt); background: var(--panel); box-shadow: 0 10px 24px rgba(0,0,0,.35); }
+    a.card:hover { border-color: var(--accent); box-shadow: 0 14px 28px rgba(99,102,241,.25); }
+    footer { margin-top: 2rem; color: var(--muted); font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+  <div class="container">
+  <h1>PicStar Upload Tools</h1>
+  <p>Select a tool below.</p>
+
+  <div class="grid">
+    <a class="card" href="/upload.html">
+      <strong>Upload Image or Video</strong>
+      <div>Single page with dropdowns for categories, plus buttons to add new categories.</div>
+    </a>
+  </div>
+
+  <footer>
+    <div>API endpoints used: <code>/api/templates/upload</code></div>
+  </footer>
+  </div>
+</body>
+</html>

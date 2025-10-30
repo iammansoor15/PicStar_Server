@@ -1,0 +1,460 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Upload • PicStar</title>
+  <style>
+    :root {
+      --bg: #0b0f14;
+      --panel: #111827;
+      --panel-2: #0f172a;
+      --txt: #e5e7eb;
+      --muted: #9ca3af;
+      --border: #1f2937;
+      --accent: #6366f1;
+      --accent-2: #22d3ee;
+      --shadow: 0 10px 30px rgba(0,0,0,0.45);
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      margin: 0; padding: 32px 20px; min-height: 100vh;
+      color: var(--txt);
+      background: radial-gradient(1200px 600px at 20% -10%, rgba(34,211,238,0.08), transparent 60%),
+                  radial-gradient(1000px 600px at 120% 10%, rgba(99,102,241,0.12), transparent 60%),
+                  var(--bg);
+    }
+    .container { max-width: 1000px; margin: 0 auto; }
+    a { color: var(--muted); text-decoration: none; }
+    a:hover { color: #fff; }
+    .card {
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 16px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)) , var(--panel);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(6px);
+    }
+    .row { display: grid; grid-template-columns: 1fr 2fr auto; gap: .75rem; align-items: center; margin: .75rem 0; }
+    label { font-weight: 600; color: #e5e7eb; }
+    select, input[type="text"], input[type="number"] {
+      width: 100%; padding: .65rem .8rem; border: 1px solid #334155; border-radius: 10px;
+      background: var(--panel-2); color: var(--txt); outline: none; transition: border-color .15s ease;
+    }
+    select:focus, input:focus { border-color: var(--accent); }
+    input[type="file"] { padding: .4rem 0; color-scheme: dark; }
+    button, .btn {
+      padding: .65rem 1rem; border-radius: 10px; border: 1px solid transparent;
+      background: linear-gradient(180deg, var(--accent), #4f46e5);
+      color: #fff; cursor: pointer; transition: transform .06s ease, box-shadow .15s ease, opacity .2s;
+      box-shadow: 0 6px 18px rgba(99,102,241,0.35);
+    }
+    button:hover { transform: translateY(-1px); box-shadow: 0 10px 24px rgba(99,102,241,0.45); }
+    button.secondary { background: #0b1220; border-color: #334155; color: var(--txt); box-shadow: none; }
+    button.secondary:hover { border-color: var(--accent); }
+    button:disabled { opacity: .6; cursor: not-allowed; transform: none; box-shadow: none; }
+    .hint { color: var(--muted); font-size: .9rem; }
+    .result { margin-top: 1rem; white-space: pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .95rem; color: #d1fae5; }
+    .toolbar { display: flex; gap: .5rem; align-items: center; }
+    .spacer { flex: 1; }
+    header { margin: 0 0 1rem; display: flex; align-items: center; gap: .75rem; }
+    h1, h2 { letter-spacing: .3px; }
+
+    /* Visual editor */
+    .editor-canvas { position: relative; background: #0b1220; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; width: 100%; height: auto; max-height: 480px; margin: 0 auto; }
+.editor-canvas img { width: 100%; height: 100%; display: block; user-select: none; pointer-events: none; object-fit: cover; object-position: center; }
+.overlay-box { position: absolute; border: 2px dashed #94a3b8; color: #e5e7eb; background: rgba(148,163,184,.08); border-radius: 10px; cursor: grab; display: flex; align-items: start; }
+    .overlay-box:active { cursor: grabbing; }
+    .overlay-box span { font-size: 12px; margin: 6px; padding: 2px 6px; border-radius: 999px; background: rgba(0,0,0,.35); }
+    .overlay-box.photo { border-color: #22d3ee; background: rgba(34,211,238,.08); aspect-ratio: 1 / 1; }
+    .overlay-box.photo span { background: rgba(34,211,238,.2); }
+.overlay-box.text { border-color: #f472b6; background: rgba(244,114,182,.08); }
+    .overlay-box.text span { background: rgba(244,114,182,.2); }
+  </style>
+  <script src="/public-config.js"></script>
+</head>
+<body>
+  <div class="container">
+  <a href="/">← Back</a>
+  <header>
+    <h1 style="margin:0">Upload Image or Video</h1>
+    <span class="spacer"></span>
+    <button id="refreshBtn" class="secondary">Refresh categories</button>
+  </header>
+  <p class="hint">Dropdowns are populated from existing templates. Use "Add new" to insert a category that doesn't exist yet.</p>
+
+  <section class="card">
+    <h2 style="margin-top:0">Categories</h2>
+    <div class="row">
+      <label for="mainSelect">Main category</label>
+      <select id="mainSelect"></select>
+      <button id="addMainBtn" type="button" class="secondary">Add new</button>
+    </div>
+    <div class="row">
+      <label for="subSelect">Subcategory<span style="color:#b91c1c">*</span></label>
+      <select id="subSelect" required></select>
+      <button id="addSubBtn" type="button" class="secondary">Add new</button>
+    </div>
+  </section>
+
+  <section class="card" style="margin-top:1rem;">
+    <h2 style="margin-top:0">Single Upload</h2>
+    <p class="hint">Automatically detects file type by MIME/extension and picks the correct API.</p>
+    <form id="singleForm">
+      <div class="row">
+        <label for="file">File<span style="color:#b91c1c">*</span></label>
+        <input id="file" name="file" type="file" accept="image/*,video/*" required />
+        <span></span>
+      </div>
+
+      <div id="imageEditor" class="card" style="margin-top:.75rem; display:none;">
+        <div class="hint">Drag the boxes to set positions. Values auto-fill for the image upload.</div>
+        <div id="editorCanvas" class="editor-canvas" style="margin-top:.5rem;">
+          <img id="previewImg" alt="preview" />
+          <div id="photoBox" class="overlay-box photo" style="left:20px; top:20px;"><span>Photo</span></div>
+          <div id="textBox" class="overlay-box text" style="left:180px; top:20px;"><span>Text</span></div>
+        </div>
+        <div class="toolbar" style="margin-top:.5rem">
+          <button type="button" id="resetBoxes" class="secondary">Reset</button>
+          <span class="spacer"></span>
+          <span class="hint">Photo: <span id="photoPos">(0,0)</span> • Text: <span id="textPos">(0,0)</span></span>
+        </div>
+      </div>
+
+      <details>
+        <summary>Optional placement coordinates (images only)</summary>
+        <div class="row"><label>Photo X</label><input name="photo_x" type="number" step="1" placeholder="0" /><span></span></div>
+        <div class="row"><label>Photo Y</label><input name="photo_y" type="number" step="1" placeholder="0" /><span></span></div>
+        <div class="row"><label>Text X</label><input name="text_x" type="number" step="1" placeholder="0" /><span></span></div>
+        <div class="row"><label>Text Y</label><input name="text_y" type="number" step="1" placeholder="0" /><span></span></div>
+      </details>
+
+      <div class="toolbar" style="margin-top:.5rem">
+        <button id="singleSubmit" type="submit">Upload</button>
+        <span class="spacer"></span>
+        <span id="decisionNote" class="hint"></span>
+      </div>
+    </form>
+    <div id="singleOut" class="result" aria-live="polite"></div>
+  </section>
+
+  </div>
+  <script>
+    const mainSelect = document.getElementById('mainSelect');
+    const subSelect = document.getElementById('subSelect');
+    const refreshBtn = document.getElementById('refreshBtn');
+    const addMainBtn = document.getElementById('addMainBtn');
+    const addSubBtn = document.getElementById('addSubBtn');
+    const decisionNote = document.getElementById('decisionNote');
+    const API_BASE = (window.APP_CONFIG && window.APP_CONFIG.API_BASE_URL) ? window.APP_CONFIG.API_BASE_URL : '';
+    const apiUrl = (p) => (API_BASE ? API_BASE.replace(/\/$/, '') + p : p);
+
+    // Build maps: main -> set(subs), and a global set of subs
+    let mapMainToSubs = new Map();
+    let allMains = new Set();
+    let allSubs = new Set();
+    const SUB_BLOCKLIST = new Set(['banner','banners']);
+
+    function setOptions(selectEl, values, includeEmpty=true, emptyLabel='— Select —') {
+      const value = selectEl.value;
+      selectEl.innerHTML = '';
+      if (includeEmpty) {
+        const opt = document.createElement('option');
+        opt.value = '';
+        opt.textContent = emptyLabel;
+        selectEl.appendChild(opt);
+      }
+      Array.from(values).sort().forEach(v => {
+        const opt = document.createElement('option');
+        opt.value = v; opt.textContent = v;
+        selectEl.appendChild(opt);
+      });
+      // try restore previous value
+      const toSelect = values.has(value) ? value : '';
+      selectEl.value = toSelect;
+    }
+
+    async function fetchAllTemplatesDistinct() {
+      // Paginate /api/templates to gather distinct main/sub values
+      mapMainToSubs = new Map();
+      allMains = new Set();
+      allSubs = new Set();
+
+      let page = 1;
+      const limit = 100;
+      while (true) {
+        const res = await fetch(apiUrl(`/api/templates?page=${page}&limit=${limit}`));
+        if (!res.ok) break;
+        const json = await res.json().catch(() => ({}));
+        const items = json?.data?.templates || [];
+        for (const t of items) {
+          const main = (t.main_category || '').trim();
+          const rawSub = (t.subcategory || t.category || '').trim();
+          const subLower = rawSub.toLowerCase();
+          if (main) { allMains.add(main); }
+          if (rawSub && !SUB_BLOCKLIST.has(subLower)) { allSubs.add(rawSub); }
+          if (main && rawSub && !SUB_BLOCKLIST.has(subLower)) {
+            if (!mapMainToSubs.has(main)) mapMainToSubs.set(main, new Set());
+            mapMainToSubs.get(main).add(rawSub);
+          }
+        }
+        const pages = json?.data?.pagination?.pages || page;
+        if (page >= pages) break;
+        page++;
+      }
+
+      // Populate selects
+      setOptions(mainSelect, allMains);
+      // Default subs = union; will re-filter when main changes
+      setOptions(subSelect, allSubs);
+    }
+
+    // Keep the same subcategories for all mains (no filtering)
+    mainSelect.addEventListener('change', () => {
+      setOptions(subSelect, allSubs);
+    });
+
+    refreshBtn.addEventListener('click', (e) => { e.preventDefault(); fetchAllTemplatesDistinct().catch(console.error); });
+
+    addMainBtn.addEventListener('click', () => {
+      const name = prompt('Enter new main category name (e.g., hindu, muslim, christian):');
+      if (!name) return;
+      const v = name.trim().toLowerCase();
+      if (!v) return;
+      allMains.add(v);
+      if (!mapMainToSubs.has(v)) mapMainToSubs.set(v, new Set());
+      setOptions(mainSelect, allMains);
+      mainSelect.value = v;
+      // Subcategories are global; do not filter by main
+      setOptions(subSelect, allSubs);
+    });
+
+    addSubBtn.addEventListener('click', () => {
+      const main = mainSelect.value || '';
+      const name = prompt('Enter new subcategory name (e.g., birthday, congratulations):');
+      if (!name) return;
+      const v = name.trim().toLowerCase();
+      if (!v || SUB_BLOCKLIST.has(v)) return;
+      allSubs.add(v);
+      // Subcategories are shared across all mains
+      setOptions(subSelect, allSubs);
+      subSelect.value = v;
+    });
+
+    // Single upload handling
+    const fileInput = document.getElementById('file');
+    const singleForm = document.getElementById('singleForm');
+    const singleOut = document.getElementById('singleOut');
+    const singleSubmit = document.getElementById('singleSubmit');
+    const editorWrap = document.getElementById('imageEditor');
+    const previewImg = document.getElementById('previewImg');
+    const editorCanvas = document.getElementById('editorCanvas');
+    const photoBox = document.getElementById('photoBox');
+    const textBox = document.getElementById('textBox');
+    const photoPosEl = document.getElementById('photoPos');
+    const textPosEl = document.getElementById('textPos');
+    const resetBtn = document.getElementById('resetBoxes');
+
+    const inputPhotoX = singleForm.querySelector('input[name="photo_x"]');
+    const inputPhotoY = singleForm.querySelector('input[name="photo_y"]');
+    const inputTextX = singleForm.querySelector('input[name="text_x"]');
+    const inputTextY = singleForm.querySelector('input[name="text_y"]');
+
+    function detectType(file) {
+      if (!file) return { kind: 'unknown' };
+      const mime = (file.type || '').toLowerCase();
+      if (mime.startsWith('image/')) return { kind: 'image' };
+      if (mime.startsWith('video/')) return { kind: 'video' };
+      const ext = (file.name.split('.').pop() || '').toLowerCase();
+      const imageExts = new Set(['jpg','jpeg','png','webp','gif','bmp','tif','tiff','svg']);
+      const videoExts = new Set(['mp4','mov','m4v','webm','mkv','avi']);
+      if (imageExts.has(ext)) return { kind: 'image' };
+      if (videoExts.has(ext)) return { kind: 'video' };
+      return { kind: 'unknown' };
+    }
+
+    function updateDecisionNote() {
+      const f = fileInput.files[0];
+      const t = detectType(f).kind;
+      if (t === 'image') decisionNote.textContent = 'Detected image → will POST to /api/templates/upload as field "image"';
+      else if (t === 'video') decisionNote.textContent = 'Detected video → will POST to /api/videos/upload as field "video"';
+      else decisionNote.textContent = '';
+    }
+    fileInput.addEventListener('change', async () => {
+      updateDecisionNote();
+      const file = fileInput.files[0];
+      if (!file) { editorWrap.style.display = 'none'; return; }
+      const kind = detectType(file).kind;
+
+      const showFromDataUrl = (dataUrl) => {
+        previewImg.onload = () => { centerBoxes(); updateOutputs(); };
+        previewImg.src = dataUrl;
+        editorWrap.style.display = '';
+      };
+
+      if (kind === 'image') {
+        const url = URL.createObjectURL(file);
+        previewImg.onload = () => { URL.revokeObjectURL(url); centerBoxes(); updateOutputs(); };
+        previewImg.src = url;
+        editorWrap.style.display = '';
+      } else if (kind === 'video') {
+        try {
+          const thumb = await generateVideoThumbnail(file);
+          showFromDataUrl(thumb);
+        } catch (e) {
+          console.warn('Could not extract video frame:', e?.message || e);
+          editorWrap.style.display = 'none';
+        }
+      } else {
+        editorWrap.style.display = 'none';
+      }
+    });
+
+    async function generateVideoThumbnail(file) {
+      return new Promise((resolve, reject) => {
+        const url = URL.createObjectURL(file);
+        const video = document.createElement('video');
+        video.preload = 'metadata';
+        video.muted = true;
+        video.src = url;
+        video.onloadeddata = () => {
+          const capture = () => {
+            const canvas = document.createElement('canvas');
+            const w = video.videoWidth || 480, h = video.videoHeight || 852;
+            canvas.width = w; canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0, w, h);
+            URL.revokeObjectURL(url);
+            try { resolve(canvas.toDataURL('image/jpeg', 0.85)); } catch (e) { reject(e); }
+          };
+          // Try around 0.5s; if not seekable, fallback to 0
+          video.currentTime = Math.min(0.5, (video.duration || 1) - 0.1);
+          video.onseeked = capture;
+          // Fallback if seeked never fires
+          setTimeout(capture, 700);
+        };
+        video.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Failed to load video for thumbnail')); };
+      });
+    }
+
+    function centerBoxes() {
+      // Fit a 9:16 canvas within the card width, clamped to 480px height
+      const parentW = editorCanvas.parentElement.getBoundingClientRect().width;
+      let H = Math.round(Math.min(parentW * 16 / 9, 480));
+      let W = Math.round(H * 9 / 16);
+      editorCanvas.style.width = W + 'px';
+      editorCanvas.style.height = H + 'px';
+      // Base sizes (before scaling). Photo 1:1, Text free ratio (decoupled width/height)
+      let photoSize = Math.max(100, Math.round(Math.min(W, H) * 0.30));
+      let textW = Math.max(120, Math.round(W * 0.50));
+      let textH = Math.max(50, Math.round(H * 0.12));
+      // Scale both to 75% of their original size
+      const scale = 0.75;
+      photoSize = Math.round(photoSize * scale);
+      textW = Math.round(textW * scale);
+      textH = Math.round(textH * scale);
+      photoBox.style.width = photoSize + 'px'; photoBox.style.height = photoSize + 'px';
+      textBox.style.width = textW + 'px'; textBox.style.height = textH + 'px';
+      photoBox.style.left = Math.max(0, Math.round((W - pw) * 0.5)) + 'px';
+      photoBox.style.top = Math.max(0, Math.round((H - ph) * 0.45)) + 'px';
+      textBox.style.left = Math.max(0, Math.round((W - tw) * 0.5)) + 'px';
+      textBox.style.top = Math.max(0, Math.round((H - th) * 0.75)) + 'px';
+    }
+
+    function clamp(n, min, max) { return Math.max(min, Math.min(max, n)); }
+
+    function makeDraggable(el) {
+      let dragging = false;
+      let offsetX = 0, offsetY = 0;
+      el.addEventListener('pointerdown', (e) => {
+        dragging = true; el.setPointerCapture(e.pointerId);
+        const r = el.getBoundingClientRect();
+        offsetX = e.clientX - r.left; offsetY = e.clientY - r.top;
+      });
+      el.addEventListener('pointerup', (e) => { dragging = false; el.releasePointerCapture(e.pointerId); updateOutputs(); });
+      el.addEventListener('pointercancel', () => { dragging = false; });
+      el.addEventListener('pointermove', (e) => {
+        if (!dragging) return;
+        const canvasR = editorCanvas.getBoundingClientRect();
+        const w = el.getBoundingClientRect().width;
+        const h = el.getBoundingClientRect().height;
+        let x = e.clientX - canvasR.left - offsetX;
+        let y = e.clientY - canvasR.top - offsetY;
+        x = clamp(Math.round(x), 0, Math.round(canvasR.width - w));
+        y = clamp(Math.round(y), 0, Math.round(canvasR.height - h));
+        el.style.left = x + 'px';
+        el.style.top = y + 'px';
+        updateOutputs();
+      });
+    }
+
+    function updateOutputs() {
+      const p = photoBox.getBoundingClientRect();
+      const t = textBox.getBoundingClientRect();
+      const c = editorCanvas.getBoundingClientRect();
+      const px = Math.round(p.left - c.left), py = Math.round(p.top - c.top);
+      const tx = Math.round(t.left - c.left), ty = Math.round(t.top - c.top);
+      inputPhotoX.value = px; inputPhotoY.value = py;
+      inputTextX.value = tx; inputTextY.value = ty;
+      photoPosEl.textContent = `(${px}, ${py})`;
+      textPosEl.textContent = `(${tx}, ${ty})`;
+    }
+
+    resetBtn.addEventListener('click', (e) => { e.preventDefault(); centerBoxes(); updateOutputs(); });
+    window.addEventListener('resize', () => { if (editorWrap.style.display !== 'none') { centerBoxes(); updateOutputs(); } });
+
+    makeDraggable(photoBox);
+    makeDraggable(textBox);
+
+    singleForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      singleOut.textContent = '';
+      const file = fileInput.files[0];
+      if (!file) { singleOut.textContent = 'Choose a file.'; return; }
+      const sub = subSelect.value.trim();
+      if (!sub) { singleOut.textContent = 'Select or add a subcategory.'; return; }
+      const kind = detectType(file).kind;
+      if (kind === 'unknown') { singleOut.textContent = 'Unsupported file type.'; return; }
+
+      const fd = new FormData();
+      const main = (mainSelect.value || '').trim();
+      if (kind === 'image') {
+        fd.append('image', file);
+        fd.append('subcategory', sub);
+        if (main) fd.append('religion', main); // image API expects 'religion' for main
+        // include optional coordinates
+        const px = singleForm.querySelector('input[name="photo_x"]').value;
+        const py = singleForm.querySelector('input[name="photo_y"]').value;
+        const tx = singleForm.querySelector('input[name="text_x"]').value;
+        const ty = singleForm.querySelector('input[name="text_y"]').value;
+        if (px !== '') fd.append('photo_x', px);
+        if (py !== '') fd.append('photo_y', py);
+        if (tx !== '') fd.append('text_x', tx);
+        if (ty !== '') fd.append('text_y', ty);
+      } else {
+        fd.append('video', file);
+        fd.append('subcategory', sub);
+        if (main) fd.append('main_category', main); // video API expects 'main_category'
+      }
+
+      const url = kind === 'image' ? apiUrl('/api/templates/upload') : apiUrl('/api/videos/upload');
+      singleSubmit.disabled = true; singleSubmit.textContent = 'Uploading...';
+      updateDecisionNote();
+      try {
+        const res = await fetch(url, { method: 'POST', body: fd });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data.success === false) throw new Error(data.error || ('HTTP ' + res.status));
+        singleOut.textContent = JSON.stringify(data, null, 2);
+      } catch (err) {
+        singleOut.textContent = 'Error: ' + (err.message || String(err));
+      } finally {
+        singleSubmit.disabled = false; singleSubmit.textContent = 'Upload';
+      }
+    });
+
+    // Initial load
+    fetchAllTemplatesDistinct().catch(err => console.error('Failed to load categories', err));
+  </script>
+</body>
+</html>
