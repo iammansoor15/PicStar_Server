@@ -3,6 +3,11 @@ import Counter from './Counter.js';
 
 const TemplateSchema = new mongoose.Schema({
   image_url: { type: String, required: true },
+  // Optional video URL when the template is a video
+  video_url: { type: String, default: null },
+  // Resource type for the template: 'image' or 'video' (default 'image' for backward compatibility)
+  resource_type: { type: String, enum: ['image', 'video'], default: 'image', index: true },
+
   serial_no: { type: Number, required: true, index: true },
   // Main and sub categories stored explicitly (subcategory is primary)
   main_category: { type: String, index: true, default: null },
