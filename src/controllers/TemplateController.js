@@ -2,6 +2,26 @@ import cloudinary from '../utils/cloudinary.js';
 import fs from 'fs';
 import Template from '../models/Template.js';
 
+// Best-effort derive Cloudinary public_id from a secure_url
+function derivePublicIdFromUrl(url) {
+  try {
+    const u = new URL(url);
+    const parts = u.pathname.split('/').filter(Boolean);
+    const idx = parts.indexOf('upload');
+    if (idx === -1) return null;
+    let start = idx + 1;
+    if (parts[start] && /^v\d+$/.test(parts[start])) start++;
+    const pathParts = parts.slice(start);
+    if (pathParts.length === 0) return null;
+    const last = pathParts[pathParts.length - 1];
+    const dot = last.lastIndexOf('.');
+    pathParts[pathParts.length - 1] = dot > 0 ? last.substring(0, dot) : last;
+    return pathParts.join('/');
+  } catch {
+    return null;
+  }
+}
+
 class TemplateController {
 // Upload image to Cloudinary and save metadata to MongoDB
   uploadAndSaveTemplate = async (req, res) => {
@@ -399,6 +419,33 @@ class TemplateController {
     } catch (error) {
       console.error('❌ Error in getLatestByMainAndSub:', error);
       return res.status(500).json({ success: false, error: error.message || 'Failed to get latest by main and subcategory' });
+    }
+  }
+
+  // DELETE /api/templates/:id - delete a template (DB) and try to remove from Cloudinary
+  deleteTemplate = async (req, res) => {
+    try {
+      const { id } = req.params;
+      if (!id) return res.status(400).json({ success: false, error: 'id is required' });
+      const doc = await Template.findById(id).lean();
+      if (!doc) return res.status(404).json({ success: false, error: 'Template not found' });
+
+      // Attempt Cloudinary deletion (best-effort)
+      try {
+        const url = doc.image_url || doc.video_url || '';
+        const publicId = derivePublicIdFromUrl(url);
+        if (publicId) {
+          await cloudinary.api.delete_resources([publicId]);
+        }
+      } catch (e) {
+        console.warn('Cloudinary delete failed (continuing):', e?.message || e);
+      }
+
+      await Template.findByIdAndDelete(id);
+      return res.json({ success: true, data: { id } });
+    } catch (error) {
+      console.error('❌ Error in deleteTemplate:', error);
+      return res.status(500).json({ success: false, error: error?.message || 'Failed to delete template' });
     }
   }
 }

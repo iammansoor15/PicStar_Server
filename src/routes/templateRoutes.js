@@ -60,4 +60,7 @@ router.get('/latest/:category', TemplateController.getLatestTemplate);
 // GET /api/templates/by-serial/:category/:serial - Get a template by category and serial number
 router.get('/by-serial/:category/:serial', TemplateController.getBySerial);
 
+// DELETE /api/templates/:id - delete template
+router.delete('/:id', TemplateController.deleteTemplate);
+
 export default router;

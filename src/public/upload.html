@@ -49,6 +49,7 @@
       background: linear-gradient(180deg, var(--accent), #4f46e5);
       color: #fff; cursor: pointer; transition: transform .06s ease, box-shadow .15s ease, opacity .2s;
       box-shadow: 0 6px 18px rgba(99,102,241,0.35);
+      display: inline-block; text-decoration: none;
     }
     button:hover { transform: translateY(-1px); box-shadow: 0 10px 24px rgba(99,102,241,0.45); }
     button.secondary { background: #0b1220; border-color: #334155; color: var(--txt); box-shadow: none; }
@@ -80,6 +81,7 @@
   <header>
     <h1 style="margin:0">Upload Image or Video</h1>
     <span class="spacer"></span>
+    <a class="btn" href="/templates.html" style="margin-right:.5rem; text-decoration:none;">maintian</a>
     <button id="refreshBtn" class="secondary">Refresh categories</button>
   </header>
   <p class="hint">Dropdowns are populated from existing templates. Use "Add new" to insert a category that doesn't exist yet.</p>

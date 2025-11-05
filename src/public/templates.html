@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Templates • PicStar</title>
+  <style>
+    :root { --bg:#0b0f14; --panel:#111827; --panel-2:#0f172a; --txt:#e5e7eb; --muted:#9ca3af; --border:#1f2937; --accent:#6366f1; --shadow:0 10px 30px rgba(0,0,0,.45); }
+    * { box-sizing: border-box; }
+    body { font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 0; padding: 32px 20px; min-height: 100vh; color: var(--txt); background: radial-gradient(1200px 600px at 20% -10%, rgba(34,211,238,0.08), transparent 60%), radial-gradient(1000px 600px at 120% 10%, rgba(99,102,241,0.12), transparent 60%), var(--bg); }
+    .container { max-width: 1100px; margin: 0 auto; }
+    header { display: flex; align-items: center; gap: .75rem; margin-bottom: 1rem; }
+    h1 { margin: 0; }
+    .spacer { flex: 1; }
+    a { color: var(--muted); text-decoration: none; }
+    a:hover { color: #fff; }
+    .btn { padding: .55rem .9rem; border-radius: 10px; border: 1px solid transparent; background: linear-gradient(180deg, var(--accent), #4f46e5); color: #fff; display: inline-block; text-decoration: none; box-shadow: 0 6px 18px rgba(99,102,241,0.35); }
+    .btn.secondary { background: #0b1220; border-color: #334155; color: var(--txt); box-shadow: none; }
+.btn:hover { box-shadow: 0 10px 24px rgba(99,102,241,0.45); }
+    .btn.danger { background: linear-gradient(180deg, #dc2626, #b91c1c); border-color: #7f1d1d; }
+    .btn.danger:hover { box-shadow: 0 10px 24px rgba(220,38,38,0.45); }
+    .card { border: 1px solid var(--border); border-radius: 14px; padding: 16px; background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)) , var(--panel); box-shadow: var(--shadow); }
+    .filters { display: grid; grid-template-columns: 1fr 1fr auto auto; gap: .75rem; align-items: center; }
+    label { font-weight: 600; color: #e5e7eb; }
+    select, input[type="text"] { width: 100%; padding: .65rem .8rem; border: 1px solid #334155; border-radius: 10px; background: var(--panel-2); color: var(--txt); outline: none; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: .9rem; margin-top: 1rem; }
+    .tile { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: #0b1220; box-shadow: var(--shadow); }
+    .tile img { width: 100%; height: 320px; object-fit: cover; display: block; }
+    .tile .meta { padding: .5rem .75rem; font-size: .9rem; color: var(--muted); display: flex; justify-content: space-between; align-items: center; gap: .5rem; }
+    .toolbar { display: flex; gap: .5rem; align-items: center; margin-top: .5rem; }
+    .hint { color: var(--muted); font-size: .9rem; }
+    .pagination { display: flex; gap: .5rem; align-items: center; justify-content: flex-end; margin-top: .75rem; }
+  </style>
+  <script src="/public-config.js"></script>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <a href="/">← Back</a>
+      <h1 style="margin-left:.5rem">Templates</h1>
+      <span class="spacer"></span>
+      <a class="btn" href="/templates.html">maintian</a>
+    </header>
+
+    <section class="card">
+      <div class="filters">
+        <div>
+          <label for="mainSelect">Main category</label>
+          <select id="mainSelect"></select>
+        </div>
+        <div>
+          <label for="subSelect">Subcategory</label>
+          <select id="subSelect"></select>
+        </div>
+        <button id="applyFilter" class="btn">Filter</button>
+        <button id="clearFilter" class="btn secondary">Clear</button>
+      </div>
+      <div class="toolbar">
+        <span class="hint">Use filters to narrow templates. Data comes from /api/templates.</span>
+        <span class="spacer"></span>
+        <div class="pagination">
+          <button id="prevPage" class="btn secondary">Prev</button>
+          <span id="pageInfo" class="hint"></span>
+          <button id="nextPage" class="btn secondary">Next</button>
+        </div>
+      </div>
+      <div id="grid" class="grid"></div>
+    </section>
+  </div>
+
+  <script>
+    const API_BASE = (window.APP_CONFIG && window.APP_CONFIG.API_BASE_URL) ? window.APP_CONFIG.API_BASE_URL : '';
+    const apiUrl = (p) => (API_BASE ? API_BASE.replace(/\/$/, '') + p : p);
+
+    const mainSelect = document.getElementById('mainSelect');
+    const subSelect = document.getElementById('subSelect');
+    const applyBtn = document.getElementById('applyFilter');
+    const clearBtn = document.getElementById('clearFilter');
+    const grid = document.getElementById('grid');
+    const prevBtn = document.getElementById('prevPage');
+    const nextBtn = document.getElementById('nextPage');
+    const pageInfo = document.getElementById('pageInfo');
+
+    let currPage = 1;
+    const PAGE_SIZE = 30;
+
+    // Maps and sets
+    let mapMainToSubs = new Map();
+    let allMains = new Set();
+    let allSubs = new Set();
+    const SUB_BLOCKLIST = new Set(['banner','banners']);
+
+    function setOptions(selectEl, values, includeEmpty=true, emptyLabel='— Any —') {
+      const value = selectEl.value;
+      selectEl.innerHTML = '';
+      if (includeEmpty) {
+        const opt = document.createElement('option');
+        opt.value = '';
+        opt.textContent = emptyLabel;
+        selectEl.appendChild(opt);
+      }
+      Array.from(values).sort().forEach(v => {
+        const opt = document.createElement('option');
+        opt.value = v; opt.textContent = v;
+        selectEl.appendChild(opt);
+      });
+      const toSelect = values.has(value) ? value : '';
+      selectEl.value = toSelect;
+    }
+
+    async function fetchAllTemplatesDistinct() {
+      mapMainToSubs = new Map();
+      allMains = new Set();
+      allSubs = new Set();
+      let page = 1; const limit = 100;
+      while (true) {
+        const res = await fetch(apiUrl(`/api/templates?page=${page}&limit=${limit}`));
+        if (!res.ok) break;
+        const json = await res.json().catch(() => ({}));
+        const items = json?.data?.templates || [];
+        for (const t of items) {
+          const main = (t.main_category || '').trim();
+          const rawSub = (t.subcategory || t.category || '').trim();
+          const subLower = rawSub.toLowerCase();
+          if (main) allMains.add(main);
+          if (rawSub && !SUB_BLOCKLIST.has(subLower)) allSubs.add(rawSub);
+          if (main && rawSub && !SUB_BLOCKLIST.has(subLower)) {
+            if (!mapMainToSubs.has(main)) mapMainToSubs.set(main, new Set());
+            mapMainToSubs.get(main).add(rawSub);
+          }
+        }
+        const pages = json?.data?.pagination?.pages || page;
+        if (page >= pages) break;
+        page++;
+      }
+      setOptions(mainSelect, allMains);
+      setOptions(subSelect, allSubs);
+    }
+
+    mainSelect.addEventListener('change', () => {
+      // For simplicity keep sub list global; do not filter by main
+      setOptions(subSelect, allSubs);
+    });
+
+    async function fetchAndRender() {
+      const main = (mainSelect.value || '').trim();
+      const sub = (subSelect.value || '').trim();
+      const params = new URLSearchParams();
+      params.set('page', String(currPage));
+      params.set('limit', String(PAGE_SIZE));
+      if (main) params.set('religion', main);
+      if (sub) params.set('subcategory', sub);
+      const res = await fetch(apiUrl(`/api/templates?${params.toString()}`));
+      const data = await res.json().catch(() => ({}));
+      const items = data?.data?.templates || [];
+      const pg = data?.data?.pagination || { page: currPage, pages: currPage };
+      grid.innerHTML = '';
+      for (const t of items) {
+        const div = document.createElement('div');
+        div.className = 'tile';
+        const img = document.createElement('img');
+        img.loading = 'lazy';
+        img.src = t.image_url;
+        img.alt = `${t.subcategory || t.category || ''} #${t.serial_no || ''}`;
+        const meta = document.createElement('div');
+        meta.className = 'meta';
+        const left = document.createElement('div');
+        left.textContent = `${t.main_category || '—'} / ${t.subcategory || t.category || '—'}`;
+        const right = document.createElement('div');
+        right.textContent = `#${t.serial_no || ''}`;
+        const del = document.createElement('button');
+        del.className = 'btn danger';
+        del.textContent = 'Delete';
+        del.addEventListener('click', async () => {
+          if (!confirm('Delete this template?')) return;
+          const old = del.textContent; del.disabled = true; del.textContent = 'Deleting...';
+          try {
+            const res = await fetch(apiUrl(`/api/templates/${t._id}`), { method: 'DELETE' });
+            const r = await res.json().catch(() => ({}));
+            if (!res.ok || r.success === false) throw new Error(r.error || ('HTTP ' + res.status));
+            div.remove();
+          } catch (e) {
+            alert('Failed to delete: ' + (e.message || e));
+          } finally {
+            del.disabled = false; del.textContent = old;
+          }
+        });
+        meta.appendChild(left);
+        meta.appendChild(right);
+        meta.appendChild(del);
+        div.appendChild(img);
+        div.appendChild(meta);
+        grid.appendChild(div);
+      }
+      currPage = pg.page || currPage;
+      pageInfo.textContent = `Page ${pg.page || 1} of ${pg.pages || 1}`;
+      prevBtn.disabled = (pg.page || 1) <= 1;
+      nextBtn.disabled = (pg.page || 1) >= (pg.pages || 1);
+    }
+
+    applyBtn.addEventListener('click', () => { currPage = 1; fetchAndRender().catch(console.error); });
+    clearBtn.addEventListener('click', () => {
+      mainSelect.value = '';
+      subSelect.value = '';
+      currPage = 1;
+      fetchAndRender().catch(console.error);
+    });
+    prevBtn.addEventListener('click', () => { if (currPage > 1) { currPage--; fetchAndRender().catch(console.error); } });
+    nextBtn.addEventListener('click', () => { currPage++; fetchAndRender().catch(console.error); });
+
+    // Initial
+    fetchAllTemplatesDistinct().then(() => fetchAndRender()).catch(console.error);
+  </script>
+</body>
+</html>
