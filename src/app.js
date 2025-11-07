@@ -62,6 +62,10 @@ app.use('/', imageRoutes);
 import authRoutes from './routes/auth-routes.js';
 app.use('/api/auth', authRoutes);
 
+// Profile photo routes
+import profilePhotoRoutes from './routes/profile-photo-routes.js';
+app.use('/api/profile-photo', profilePhotoRoutes);
+
 
 // Error handling
 app.use(errorHandler);

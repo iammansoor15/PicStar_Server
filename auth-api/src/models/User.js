@@ -6,6 +6,7 @@ const userSchema = new mongoose.Schema(
     email: { type: String, trim: true, lowercase: true, unique: true, sparse: true },
     phone: { type: String, trim: true, unique: true, sparse: true },
     passwordHash: { type: String, required: true },
+    profilePhotoUrl: { type: String, default: null },
   },
   { timestamps: true }
 );

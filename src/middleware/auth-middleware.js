@@ -8,9 +8,12 @@ export const authRequired = (req, res, next) => {
     if (!token) return res.status(401).json({ success: false, error: 'Missing token' });
 
     const decoded = jwt.verify(token, config.auth.jwtSecret);
-    req.user = { id: decoded.id };
+    req.user = { id: decoded.id, sub: decoded.id, ...decoded };
     next();
   } catch (e) {
     return res.status(401).json({ success: false, error: 'Invalid or expired token' });
   }
 };
+
+// Alias for consistency with auth-api
+export const authMiddleware = authRequired;
