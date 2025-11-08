@@ -5,6 +5,8 @@ import { fileURLToPath } from 'url';
 import imageRoutes from './routes/image-routes.js';
 import templateRoutes from './routes/templateRoutes.js';
 import videoRoutes from './routes/video-routes.js';
+import authRoutes from './routes/auth-routes.js';
+import profilePhotoRoutes from './routes/profile-photo-routes.js';
 import { connectDB } from './config/db.js';
 import { errorHandler } from './middleware/error-handler.js';
 import { rateLimiter } from './middleware/rate-limit.js';
@@ -56,14 +58,7 @@ app.get('/public-config.js', (req, res) => {
 app.use('/', imageRoutes);
 app.use('/api/templates', templateRoutes);
 app.use('/api/videos', videoRoutes);
-app.use('/', imageRoutes);
-
-// Auth routes
-import authRoutes from './routes/auth-routes.js';
 app.use('/api/auth', authRoutes);
-
-// Profile photo routes
-import profilePhotoRoutes from './routes/profile-photo-routes.js';
 app.use('/api/profile-photo', profilePhotoRoutes);
 
 
