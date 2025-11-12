@@ -76,6 +76,11 @@ const config = {
         cloudName: process.env.CLOUDINARY_CLOUD_NAME,
         apiKey: process.env.CLOUDINARY_API_KEY,
         apiSecret: process.env.CLOUDINARY_API_SECRET,
+    },
+    razorpay: {
+        keyId: process.env.RAZORPAY_KEY_ID,
+        keySecret: process.env.RAZORPAY_KEY_SECRET,
+        webhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET,
     }
 };
 

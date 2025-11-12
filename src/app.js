@@ -7,6 +7,7 @@ import templateRoutes from './routes/templateRoutes.js';
 import videoRoutes from './routes/video-routes.js';
 import authRoutes from './routes/auth-routes.js';
 import profilePhotoRoutes from './routes/profile-photo-routes.js';
+import paymentRoutes from './routes/payment-routes.js';
 import { connectDB } from './config/db.js';
 import { errorHandler } from './middleware/error-handler.js';
 import { rateLimiter } from './middleware/rate-limit.js';
@@ -60,7 +61,17 @@ app.use('/api/templates', templateRoutes);
 app.use('/api/videos', videoRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/profile-photo', profilePhotoRoutes);
+app.use('/api/payments', paymentRoutes);
 
+// 404 handler - must be after all routes
+app.use((req, res) => {
+  res.status(404).json({
+    success: false,
+    error: 'Not Found',
+    message: `Cannot ${req.method} ${req.path}`,
+    path: req.path
+  });
+});
 
 // Error handling
 app.use(errorHandler);
