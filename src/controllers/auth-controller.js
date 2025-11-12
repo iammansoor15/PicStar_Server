@@ -105,6 +105,36 @@ export const me = async (req, res) => {
   }
 };
 
+export const subscriptionStatus = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select('subscription');
+    if (!user) return res.status(404).json({ success: false, error: 'User not found' });
+
+    const now = new Date();
+    const isActive = user.subscription?.status === 'active' &&
+                     user.subscription?.currentPeriodEnd &&
+                     user.subscription.currentPeriodEnd > now;
+
+    // Auto-update to expired if period ended
+    if (user.subscription?.status === 'active' && user.subscription?.currentPeriodEnd && user.subscription.currentPeriodEnd <= now) {
+      user.subscription.status = 'expired';
+      await user.save();
+    }
+
+    return res.json({
+      success: true,
+      data: {
+        active: isActive,
+        status: isActive ? 'active' : (user.subscription?.status || 'none'),
+        currentPeriodEnd: user.subscription?.currentPeriodEnd || null,
+      },
+    });
+  } catch (e) {
+    console.error('Subscription status error:', e);
+    return res.status(500).json({ success: false, error: 'Server error' });
+  }
+};
+
 // OTP-based authentication endpoints
 export const sendOtp = async (req, res) => {
   try {

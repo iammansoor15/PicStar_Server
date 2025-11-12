@@ -1,6 +1,7 @@
 import razorpayService from '../services/razorpay-service.js';
 import config from '../config/config.js';
 import { v4 as uuidv4 } from 'uuid';
+import User from '../models/User.js';
 
 /**
  * Create a Razorpay order for payment
@@ -173,9 +174,21 @@ export const verifyPayment = async (req, res) => {
     console.log('✅ [SERVER] Transaction updated successfully');
     console.log('🎫 [SERVER] Transaction ID:', transaction._id);
 
-    // TODO: Implement your business logic here
-    // E.g., unlock premium features, credit coins, activate subscription, etc.
-    console.log('\n💡 [SERVER] Business logic hook (TODO: implement features unlock)');
+    // Business logic: Activate subscription for 30 days
+    console.log('\n💡 [SERVER] Activating subscription for user...');
+    try {
+      const subscriptionEnd = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days from now
+      await User.findByIdAndUpdate(userId, {
+        'subscription.status': 'active',
+        'subscription.currentPeriodEnd': subscriptionEnd,
+        'subscription.lastTransactionId': transaction._id,
+        'subscription.createdAt': new Date(),
+      });
+      console.log('✅ [SERVER] Subscription activated until:', subscriptionEnd.toISOString());
+    } catch (subErr) {
+      console.error('⚠️ [SERVER] Failed to activate subscription:', subErr.message);
+      // Don't fail the payment, just log the error
+    }
 
     const responseData = {
       success: true,

@@ -12,6 +12,13 @@ const userSchema = new mongoose.Schema(
     otpExpiry: { type: Date, select: false }, // OTP expiration time
     otpSessionId: { type: String, select: false }, // Session ID from 2factor.in
     isPhoneVerified: { type: Boolean, default: false }, // Track if phone is verified
+    // Subscription fields (for quick access control)
+    subscription: {
+      status: { type: String, enum: ['active', 'expired', 'none'], default: 'none', index: true },
+      currentPeriodEnd: { type: Date, default: null },
+      lastTransactionId: { type: mongoose.Schema.Types.ObjectId, ref: 'Transaction', default: null },
+      createdAt: { type: Date, default: null },
+    },
   },
   { timestamps: true }
 );
