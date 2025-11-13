@@ -38,4 +38,7 @@ router.get('/health', (req, res) => {
 // POST /api/videos/upload - field name: "video"
 router.post('/upload', upload.single('video'), (req, res, next) => videoController.upload(req, res, next));
 
+// POST /api/videos/composite - composite video with overlays
+router.post('/composite', (req, res, next) => videoController.composite(req, res, next));
+
 export default router;
