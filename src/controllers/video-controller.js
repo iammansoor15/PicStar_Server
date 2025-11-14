@@ -9,6 +9,50 @@ import axios from 'axios';
 const execPromise = promisify(exec);
 
 class VideoController {
+  // POST /api/videos/upload-photo
+  async uploadPhoto(req, res) {
+    const startTime = Date.now();
+    const requestId = req.body.requestId || `photo_${Date.now()}`;
+    
+    try {
+      const { photo, mimeType } = req.body;
+      
+      if (!photo) {
+        return res.status(400).json({ success: false, error: 'Photo data is required' });
+      }
+      
+      console.log(`📷 [${requestId}] Uploading photo to Cloudinary...`);
+      console.log(`   Size: ${(photo.length / 1024).toFixed(2)} KB`);
+      console.log(`   Type: ${mimeType}`);
+      
+      // Upload to Cloudinary
+      const uploadResult = await cloudinary.uploader.upload(
+        `data:${mimeType || 'image/jpeg'};base64,${photo}`,
+        {
+          folder: 'narayana_templates/temp_overlays',
+          resource_type: 'image',
+        }
+      );
+      
+      const uploadTime = Date.now() - startTime;
+      console.log(`✅ [${requestId}] Photo uploaded in ${uploadTime}ms`);
+      console.log(`   URL: ${uploadResult.secure_url}`);
+      
+      return res.status(200).json({
+        success: true,
+        url: uploadResult.secure_url,
+        uploadTime
+      });
+    } catch (error) {
+      const errorTime = Date.now() - startTime;
+      console.error(`❌ [${requestId}] Photo upload failed after ${errorTime}ms:`, error.message);
+      return res.status(500).json({ 
+        success: false, 
+        error: error.message || 'Failed to upload photo'
+      });
+    }
+  }
+
   // POST /api/videos/upload
   async upload(req, res) {
     try {
