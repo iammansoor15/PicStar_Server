@@ -8,6 +8,8 @@ import videoRoutes from './routes/video-routes.js';
 import authRoutes from './routes/auth-routes.js';
 import profilePhotoRoutes from './routes/profile-photo-routes.js';
 import paymentRoutes from './routes/payment-routes.js';
+import notificationRoutes from './routes/notification-routes.js';
+import notificationService from './services/notification-service.js';
 import { connectDB } from './config/db.js';
 import { errorHandler } from './middleware/error-handler.js';
 import { rateLimiter } from './middleware/rate-limit.js';
@@ -62,6 +64,7 @@ app.use('/api/videos', videoRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/profile-photo', profilePhotoRoutes);
 app.use('/api/payments', paymentRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 // 404 handler - must be after all routes
 app.use((req, res) => {
@@ -89,6 +92,9 @@ ensureDirectoryExists(config.paths.uploads);
 
 // Start cleanup service for uploads folder
 cleanupService.start();
+
+// Start notification service
+notificationService.start();
 
 
 // Create logs directory if it doesn't exist
