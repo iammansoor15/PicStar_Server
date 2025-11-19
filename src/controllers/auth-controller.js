@@ -58,7 +58,7 @@ export const register = async (req, res) => {
     });
 
     const token = sign(user._id.toString());
-    return res.status(201).json({ success: true, data: { token, user: { id: user._id, name: user.name, email: user.email, phone: user.phone } } });
+    return res.status(201).json({ success: true, data: { token, user: { id: user._id, name: user.name, email: user.email, phone: user.phone, profilePhotoUrl: user.profilePhotoUrl } } });
   } catch (e) {
     console.error('Auth register error:', e);
     return res.status(500).json({ success: false, error: 'Server error' });
@@ -88,7 +88,7 @@ export const login = async (req, res) => {
     if (!ok) return res.status(401).json({ success: false, error: 'Invalid credentials' });
 
     const token = sign(user._id.toString());
-    return res.json({ success: true, data: { token, user: { id: user._id, name: user.name, email: user.email, phone: user.phone } } });
+    return res.json({ success: true, data: { token, user: { id: user._id, name: user.name, email: user.email, phone: user.phone, profilePhotoUrl: user.profilePhotoUrl } } });
   } catch (e) {
     console.error('Auth login error:', e);
     return res.status(500).json({ success: false, error: 'Server error' });
@@ -97,8 +97,17 @@ export const login = async (req, res) => {
 
 export const me = async (req, res) => {
   try {
-    const user = await User.findById(req.user.id).select('name email phone');
+    const user = await User.findById(req.user.id).select('name email phone profilePhotoUrl');
     if (!user) return res.status(404).json({ success: false, error: 'User not found' });
+
+    console.log('=== /me ENDPOINT - RETURNING USER DATA ===');
+    console.log('User ID:', user._id);
+    console.log('Name:', user.name);
+    console.log('Email:', user.email);
+    console.log('Phone:', user.phone);
+    console.log('Profile Photo URL:', user.profilePhotoUrl);
+    console.log('==========================================');
+
     return res.json({ success: true, data: { user } });
   } catch (e) {
     return res.status(500).json({ success: false, error: 'Server error' });
@@ -253,9 +262,15 @@ export const verifyOtp = async (req, res) => {
     user.otpSessionId = undefined;
     
     const savedUser = await user.save();
-    
-    console.log('OTP verified for user:', savedUser.phone);
-    
+
+    console.log('=== OTP VERIFIED - USER DATA ===');
+    console.log('Phone:', savedUser.phone);
+    console.log('Name:', savedUser.name);
+    console.log('Email:', savedUser.email);
+    console.log('Profile Photo URL:', savedUser.profilePhotoUrl);
+    console.log('Is Phone Verified:', savedUser.isPhoneVerified);
+    console.log('================================');
+
     // Generate JWT token
     const token = sign(savedUser._id.toString());
     
@@ -268,6 +283,7 @@ export const verifyOtp = async (req, res) => {
         name: savedUser.name,
         phone: savedUser.phone,
         email: savedUser.email,
+        profilePhotoUrl: savedUser.profilePhotoUrl,
       },
       data: {
         token,
@@ -276,6 +292,7 @@ export const verifyOtp = async (req, res) => {
           name: savedUser.name,
           phone: savedUser.phone,
           email: savedUser.email,
+          profilePhotoUrl: savedUser.profilePhotoUrl,
         },
       },
     });
