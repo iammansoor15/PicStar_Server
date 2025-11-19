@@ -241,9 +241,12 @@ export const verifyOtp = async (req, res) => {
       return res.status(401).json({ success: false, error: 'Invalid OTP' });
     }
     
-    // OTP verified - just mark as verified and clear OTP fields
-    // Name will be updated via /profile endpoint
-    user.name = userName;
+    // OTP verified - mark as verified and clear OTP fields
+    // Only update name if user is being created/registered (not already verified)
+    // For existing users signing in, keep their original name
+    if (!user.isPhoneVerified) {
+      user.name = userName;
+    }
     user.isPhoneVerified = true;
     user.otp = undefined;
     user.otpExpiry = undefined;
