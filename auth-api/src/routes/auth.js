@@ -124,4 +124,41 @@ router.get('/me', authMiddleware, async (req, res) => {
   }
 });
 
+// PUT /api/auth/profile
+router.put('/profile', authMiddleware, async (req, res) => {
+  try {
+    const { name, profilePhotoUrl } = req.body || {};
+    
+    // Build update object with only provided fields
+    const update = {};
+    if (name !== undefined) {
+      const trimmedName = String(name).trim();
+      if (trimmedName.length < 2) {
+        return res.status(400).json({ error: 'Name must be at least 2 characters' });
+      }
+      update.name = trimmedName;
+    }
+    if (profilePhotoUrl !== undefined) {
+      update.profilePhotoUrl = profilePhotoUrl;
+    }
+    
+    // If no fields to update, return error
+    if (Object.keys(update).length === 0) {
+      return res.status(400).json({ error: 'No fields to update' });
+    }
+    
+    const user = await User.findByIdAndUpdate(
+      req.user.sub,
+      { $set: update },
+      { new: true, runValidators: true }
+    );
+    
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    return res.json({ data: { user: user.toJSON() } });
+  } catch (e) {
+    console.error('Profile update error:', e);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 export default router;

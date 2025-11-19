@@ -211,9 +211,8 @@ export const verifyOtp = async (req, res) => {
   try {
     const { phone, otp, name } = req.body || {};
     
-    if (!name || typeof name !== 'string' || name.trim().length < 2) {
-      return res.status(400).json({ success: false, error: 'Name must be at least 2 characters' });
-    }
+    // Name is optional now - will be updated via /profile endpoint
+    const userName = (name && typeof name === 'string' && name.trim().length >= 2) ? String(name).trim() : 'User';
     
     // Normalize phone number
     const phoneNorm = normalizeIndianPhone(phone);
@@ -242,27 +241,38 @@ export const verifyOtp = async (req, res) => {
       return res.status(401).json({ success: false, error: 'Invalid OTP' });
     }
     
-    // OTP verified - update user
-    user.name = String(name).trim();
+    // OTP verified - just mark as verified and clear OTP fields
+    // Name will be updated via /profile endpoint
+    user.name = userName;
     user.isPhoneVerified = true;
     user.otp = undefined;
     user.otpExpiry = undefined;
     user.otpSessionId = undefined;
-    await user.save();
+    
+    const savedUser = await user.save();
+    
+    console.log('OTP verified for user:', savedUser.phone);
     
     // Generate JWT token
-    const token = sign(user._id.toString());
+    const token = sign(savedUser._id.toString());
     
     return res.status(200).json({
       success: true,
       message: 'Phone verified successfully',
+      token,
+      user: {
+        id: savedUser._id,
+        name: savedUser.name,
+        phone: savedUser.phone,
+        email: savedUser.email,
+      },
       data: {
         token,
         user: {
-          id: user._id,
-          name: user.name,
-          phone: user.phone,
-          email: user.email,
+          id: savedUser._id,
+          name: savedUser.name,
+          phone: savedUser.phone,
+          email: savedUser.email,
         },
       },
     });
@@ -361,6 +371,81 @@ export const resendOtp = async (req, res) => {
     });
   } catch (e) {
     console.error('Resend OTP error:', e);
+    return res.status(500).json({ success: false, error: 'Server error' });
+  }
+};
+
+export const updateProfile = async (req, res) => {
+  try {
+    const { name, profilePhotoUrl } = req.body || {};
+    
+    console.log('=== UPDATE PROFILE REQUEST ===');
+    console.log('User ID:', req.user.id);
+    console.log('Request body:', { name, profilePhotoUrl });
+    
+    // Build update object with only provided fields
+    const update = {};
+    if (name !== undefined) {
+      const trimmedName = String(name).trim();
+      console.log('Processing name update:', { original: name, trimmed: trimmedName });
+      if (trimmedName.length < 2) {
+        console.log('Name validation failed: too short');
+        return res.status(400).json({ success: false, error: 'Name must be at least 2 characters' });
+      }
+      update.name = trimmedName;
+    }
+    if (profilePhotoUrl !== undefined) {
+      update.profilePhotoUrl = profilePhotoUrl;
+    }
+    
+    console.log('Update object:', update);
+    
+    // If no fields to update, return error
+    if (Object.keys(update).length === 0) {
+      console.log('No fields to update');
+      return res.status(400).json({ success: false, error: 'No fields to update' });
+    }
+    
+    console.log('Calling User.findByIdAndUpdate...');
+    const user = await User.findByIdAndUpdate(
+      req.user.id,
+      { $set: update },
+      { new: true, runValidators: true }
+    ).select('name email phone profilePhotoUrl');
+    
+    if (!user) {
+      console.log('User not found after update');
+      return res.status(404).json({ success: false, error: 'User not found' });
+    }
+    
+    console.log('Profile updated successfully. User data:', {
+      id: user._id,
+      name: user.name,
+      phone: user.phone,
+      email: user.email
+    });
+    
+    return res.json({ 
+      success: true, 
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        profilePhotoUrl: user.profilePhotoUrl
+      },
+      data: { 
+        user: {
+          id: user._id,
+          name: user.name,
+          email: user.email,
+          phone: user.phone,
+          profilePhotoUrl: user.profilePhotoUrl
+        }
+      }
+    });
+  } catch (e) {
+    console.error('Profile update error:', e);
     return res.status(500).json({ success: false, error: 'Server error' });
   }
 };

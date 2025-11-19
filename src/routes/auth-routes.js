@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { register, login, me, sendOtp, verifyOtp, resendOtp, checkOtp, subscriptionStatus } from '../controllers/auth-controller.js';
+import { register, login, me, sendOtp, verifyOtp, resendOtp, checkOtp, subscriptionStatus, updateProfile } from '../controllers/auth-controller.js';
 import { authRequired } from '../middleware/auth-middleware.js';
 
 const router = Router();
@@ -16,6 +16,7 @@ router.post('/resend-otp', resendOtp);
 
 // User profile
 router.get('/me', authRequired, me);
+router.put('/profile', authRequired, updateProfile);
 
 // Subscription status
 router.get('/subscription-status', authRequired, subscriptionStatus);
