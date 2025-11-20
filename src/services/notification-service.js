@@ -59,7 +59,7 @@ class NotificationService {
   }
 
   /**
-   * Start the notification scheduler (every 10 seconds)
+   * Start the notification scheduler (every 1 hour)
    */
   start() {
     if (this.isRunning) {
@@ -70,13 +70,13 @@ class NotificationService {
     // Generate initial notification
     this.selectRandomVideo();
 
-    // Schedule notification generation every 10 seconds
-    this.job = cron.schedule('*/10 * * * * *', async () => {
+    // Schedule notification generation every 1 hour
+    this.job = cron.schedule('0 * * * *', async () => {
       await this.selectRandomVideo();
     });
 
     this.isRunning = true;
-    logger.info('🔔 Notification service started - generating notifications every 10 seconds');
+    logger.info('🔔 Notification service started - generating notifications every 1 hour');
   }
 
   /**
