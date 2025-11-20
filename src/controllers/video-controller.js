@@ -89,6 +89,40 @@ class VideoController {
       const normalizedMain = mainCategoryRaw ? String(mainCategoryRaw).toLowerCase().trim() : null;
       const normalizedSub = String(subcategoryInput).toLowerCase().trim();
 
+      // Parse optional axes from multipart fields (same as image upload)
+      let photoAxis = { x: 0, y: 0 };
+      let textAxis = { x: 0, y: 0 };
+      try {
+        // Photo axis (JSON or flat fields)
+        if (typeof req.body.photo_container_axis === 'string') {
+          const parsed = JSON.parse(req.body.photo_container_axis);
+          if (Number.isFinite(parsed.x) && Number.isFinite(parsed.y)) {
+            photoAxis = { x: Number(parsed.x), y: Number(parsed.y) };
+          }
+        } else if (req.body.photo_x !== undefined && req.body.photo_y !== undefined) {
+          const x = Number(req.body.photo_x);
+          const y = Number(req.body.photo_y);
+          if (Number.isFinite(x) && Number.isFinite(y)) {
+            photoAxis = { x, y };
+          }
+        }
+        // Text axis (JSON or flat fields)
+        if (typeof req.body.text_container_axis === 'string') {
+          const tParsed = JSON.parse(req.body.text_container_axis);
+          if (Number.isFinite(tParsed.x) && Number.isFinite(tParsed.y)) {
+            textAxis = { x: Number(tParsed.x), y: Number(tParsed.y) };
+          }
+        } else if (req.body.text_x !== undefined && req.body.text_y !== undefined) {
+          const tx = Number(req.body.text_x);
+          const ty = Number(req.body.text_y);
+          if (Number.isFinite(tx) && Number.isFinite(ty)) {
+            textAxis = { x: tx, y: ty };
+          }
+        }
+      } catch (e) {
+        console.warn('Invalid axis provided, using defaults. Error:', e?.message || e);
+      }
+
       // Persist to MongoDB
       const doc = await Template.create({
         image_url: uploadResult.secure_url, // keep required field populated
@@ -96,7 +130,8 @@ class VideoController {
         resource_type: 'video',
         main_category: normalizedMain,
         subcategory: normalizedSub,
-        // videos don't use axes (default 0,0 preserved)
+        photo_container_axis: photoAxis,
+        text_container_axis: textAxis,
       });
 
       return res.status(201).json({
@@ -110,6 +145,8 @@ class VideoController {
           subcategory: doc.subcategory,
           main_category: doc.main_category,
           created_at: doc.created_at,
+          photo_container_axis: doc.photo_container_axis,
+          text_container_axis: doc.text_container_axis,
         }
       });
     } catch (error) {

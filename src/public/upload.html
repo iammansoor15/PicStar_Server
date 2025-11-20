@@ -438,6 +438,15 @@
         fd.append('video', file);
         fd.append('subcategory', sub);
         if (main) fd.append('main_category', main); // video API expects 'main_category'
+        // include optional coordinates for videos too
+        const px = singleForm.querySelector('input[name="photo_x"]').value;
+        const py = singleForm.querySelector('input[name="photo_y"]').value;
+        const tx = singleForm.querySelector('input[name="text_x"]').value;
+        const ty = singleForm.querySelector('input[name="text_y"]').value;
+        if (px !== '') fd.append('photo_x', px);
+        if (py !== '') fd.append('photo_y', py);
+        if (tx !== '') fd.append('text_x', tx);
+        if (ty !== '') fd.append('text_y', ty);
       }
 
       const url = kind === 'image' ? apiUrl('/api/templates/upload') : apiUrl('/api/videos/upload');
