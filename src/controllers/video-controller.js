@@ -9,6 +9,63 @@ import axios from 'axios';
 const execPromise = promisify(exec);
 
 class VideoController {
+  // Crop video using FFmpeg
+  async cropVideoWithFFmpeg(inputPath, cropParams) {
+    const { crop_x, crop_y, crop_w, crop_h, preview_w, preview_h } = cropParams;
+
+    // Parse values
+    const cx = parseInt(crop_x, 10);
+    const cy = parseInt(crop_y, 10);
+    const cw = parseInt(crop_w, 10);
+    const ch = parseInt(crop_h, 10);
+    const pw = parseInt(preview_w, 10);
+    const ph = parseInt(preview_h, 10);
+
+    if (!Number.isFinite(cx) || !Number.isFinite(cy) || !Number.isFinite(cw) || !Number.isFinite(ch) ||
+        !Number.isFinite(pw) || !Number.isFinite(ph) || cw <= 0 || ch <= 0 || pw <= 0 || ph <= 0) {
+      console.log('⚠️ Invalid crop parameters, skipping crop');
+      return inputPath;
+    }
+
+    console.log('✂️ Cropping video with FFmpeg...');
+    console.log(`   Preview dimensions: ${pw}x${ph}`);
+    console.log(`   Crop area: ${cw}x${ch} at (${cx},${cy})`);
+
+    // Get original video dimensions using FFprobe
+    const probeCmd = `ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=s=x:p=0 "${inputPath}"`;
+    const { stdout: probeOut } = await execPromise(probeCmd);
+    const [origW, origH] = probeOut.trim().split('x').map(Number);
+
+    console.log(`   Original video: ${origW}x${origH}`);
+
+    // Scale crop coordinates from preview to original video
+    const scaleX = origW / pw;
+    const scaleY = origH / ph;
+    const realX = Math.round(cx * scaleX);
+    const realY = Math.round(cy * scaleY);
+    const realW = Math.round(cw * scaleX);
+    const realH = Math.round(ch * scaleY);
+
+    console.log(`   Scaled crop: ${realW}x${realH} at (${realX},${realY})`);
+
+    // Create output path
+    const ext = path.extname(inputPath);
+    const outputPath = inputPath.replace(ext, `_cropped${ext}`);
+
+    // Run FFmpeg crop (with audio copy)
+    const ffmpegCmd = `ffmpeg -i "${inputPath}" -vf "crop=${realW}:${realH}:${realX}:${realY}" -c:a copy -y "${outputPath}"`;
+    console.log(`   FFmpeg command: ${ffmpegCmd}`);
+
+    await execPromise(ffmpegCmd);
+
+    console.log('✅ Video cropped successfully');
+
+    // Delete original, return cropped path
+    try { fs.unlinkSync(inputPath); } catch {}
+
+    return outputPath;
+  }
+
   // POST /api/videos/upload-photo
   async uploadPhoto(req, res) {
     const startTime = Date.now();
@@ -75,16 +132,39 @@ class VideoController {
         mimetype: req.file.mimetype,
       });
 
+      // Check if crop is requested
+      let filePathToUpload = req.file.path;
+      const hasCrop = req.body.crop_w && req.body.crop_h && req.body.preview_w && req.body.preview_h;
+
+      if (hasCrop) {
+        try {
+          filePathToUpload = await this.cropVideoWithFFmpeg(req.file.path, {
+            crop_x: req.body.crop_x,
+            crop_y: req.body.crop_y,
+            crop_w: req.body.crop_w,
+            crop_h: req.body.crop_h,
+            preview_w: req.body.preview_w,
+            preview_h: req.body.preview_h,
+          });
+        } catch (cropErr) {
+          console.error('❌ Video crop failed, using original:', cropErr.message);
+          filePathToUpload = req.file.path;
+        }
+      }
+
       // Upload video to Cloudinary
-      const uploadResult = await cloudinary.uploader.upload(req.file.path, {
+      const uploadResult = await cloudinary.uploader.upload(filePathToUpload, {
         folder: `narayana_templates/${String(subcategoryInput).toLowerCase().trim()}`,
         resource_type: 'video',
       });
 
       console.log('✅ Video uploaded to Cloudinary:', uploadResult.secure_url);
 
-      // Cleanup temp file
-      try { fs.unlinkSync(req.file.path); } catch (e) { /* ignore */ }
+      // Cleanup temp file(s)
+      try { fs.unlinkSync(filePathToUpload); } catch (e) { /* ignore */ }
+      if (filePathToUpload !== req.file.path) {
+        try { fs.unlinkSync(req.file.path); } catch (e) { /* ignore */ }
+      }
 
       const normalizedMain = mainCategoryRaw ? String(mainCategoryRaw).toLowerCase().trim() : null;
       const normalizedSub = String(subcategoryInput).toLowerCase().trim();

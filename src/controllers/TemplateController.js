@@ -1,6 +1,97 @@
 import cloudinary from '../utils/cloudinary.js';
 import fs from 'fs';
+import path from 'path';
+import { promisify } from 'util';
+import { exec } from 'child_process';
 import Template from '../models/Template.js';
+
+const execPromise = promisify(exec);
+
+// Crop image using FFmpeg
+async function cropImageWithFFmpeg(inputPath, cropParams) {
+  const { crop_x, crop_y, crop_w, crop_h, preview_w, preview_h } = cropParams;
+
+  // Parse values
+  const cx = parseInt(crop_x, 10) || 0;
+  const cy = parseInt(crop_y, 10) || 0;
+  const cw = parseInt(crop_w, 10);
+  const ch = parseInt(crop_h, 10);
+  const pw = parseInt(preview_w, 10);
+  const ph = parseInt(preview_h, 10);
+
+  console.log('✂️ Crop parameters received:', { cx, cy, cw, ch, pw, ph });
+
+  if (!cw || !ch || !pw || !ph || cw <= 0 || ch <= 0 || pw <= 0 || ph <= 0) {
+    console.log('⚠️ Invalid crop parameters, skipping crop');
+    return inputPath;
+  }
+
+  console.log('✂️ Cropping image with FFmpeg...');
+  console.log(`   Preview dimensions: ${pw}x${ph}`);
+  console.log(`   Crop area: ${cw}x${ch} at (${cx},${cy})`);
+
+  try {
+    // Get original image dimensions using FFprobe (use -show_streams for images)
+    const probeCmd = `ffprobe -v error -show_entries stream=width,height -of csv=p=0:s=x "${inputPath}"`;
+    console.log(`   Probe command: ${probeCmd}`);
+    const { stdout: probeOut, stderr: probeErr } = await execPromise(probeCmd);
+    console.log(`   Probe output: "${probeOut.trim()}"`, probeErr ? `stderr: ${probeErr}` : '');
+
+    const dimensions = probeOut.trim().split('\n')[0]; // Take first line
+    const [origW, origH] = dimensions.split('x').map(Number);
+
+    if (!origW || !origH) {
+      console.log('⚠️ Could not get image dimensions, skipping crop');
+      return inputPath;
+    }
+
+    console.log(`   Original image: ${origW}x${origH}`);
+
+    // Scale crop coordinates from preview to original image
+    const scaleX = origW / pw;
+    const scaleY = origH / ph;
+    const realX = Math.max(0, Math.round(cx * scaleX));
+    const realY = Math.max(0, Math.round(cy * scaleY));
+    let realW = Math.round(cw * scaleX);
+    let realH = Math.round(ch * scaleY);
+
+    // Ensure crop doesn't exceed image bounds
+    if (realX + realW > origW) realW = origW - realX;
+    if (realY + realH > origH) realH = origH - realY;
+
+    console.log(`   Scale factors: X=${scaleX.toFixed(2)}, Y=${scaleY.toFixed(2)}`);
+    console.log(`   Scaled crop: ${realW}x${realH} at (${realX},${realY})`);
+
+    // Create output path
+    const ext = path.extname(inputPath);
+    const outputPath = inputPath.replace(ext, `_cropped${ext}`);
+
+    // Run FFmpeg crop
+    const ffmpegCmd = `ffmpeg -i "${inputPath}" -vf "crop=${realW}:${realH}:${realX}:${realY}" -y "${outputPath}"`;
+    console.log(`   FFmpeg command: ${ffmpegCmd}`);
+
+    const { stdout: ffOut, stderr: ffErr } = await execPromise(ffmpegCmd);
+    if (ffErr) console.log(`   FFmpeg stderr: ${ffErr.substring(0, 200)}`);
+
+    // Verify output file exists
+    if (!fs.existsSync(outputPath)) {
+      console.log('❌ Cropped file was not created, using original');
+      return inputPath;
+    }
+
+    const origSize = fs.statSync(inputPath).size;
+    const croppedSize = fs.statSync(outputPath).size;
+    console.log(`✅ Image cropped successfully (${origSize} -> ${croppedSize} bytes)`);
+
+    // Delete original, return cropped path
+    try { fs.unlinkSync(inputPath); } catch {}
+
+    return outputPath;
+  } catch (err) {
+    console.error('❌ Crop error:', err.message);
+    return inputPath;
+  }
+}
 
 
 // Best-effort derive Cloudinary public_id from a secure_url
@@ -55,20 +146,61 @@ class TemplateController {
         }
       } catch {}
 
-// Upload to Cloudinary
-      const uploadResult = await cloudinary.uploader.upload(req.file.path, {
+      // Check if crop is requested
+      let filePathToUpload = req.file.path;
+      console.log('📐 Crop fields:', {
+        crop_x: req.body.crop_x,
+        crop_y: req.body.crop_y,
+        crop_w: req.body.crop_w,
+        crop_h: req.body.crop_h,
+        preview_w: req.body.preview_w,
+        preview_h: req.body.preview_h,
+      });
+      const hasCrop = req.body.crop_w && req.body.crop_h && req.body.preview_w && req.body.preview_h;
+      console.log('📐 hasCrop:', hasCrop);
+
+      if (hasCrop) {
+        try {
+          filePathToUpload = await cropImageWithFFmpeg(req.file.path, {
+            crop_x: req.body.crop_x,
+            crop_y: req.body.crop_y,
+            crop_w: req.body.crop_w,
+            crop_h: req.body.crop_h,
+            preview_w: req.body.preview_w,
+            preview_h: req.body.preview_h,
+          });
+        } catch (cropErr) {
+          console.error('❌ Crop failed, using original:', cropErr.message);
+          filePathToUpload = req.file.path;
+        }
+      }
+
+      // Upload to Cloudinary (skip auto-crop transformation if we already cropped)
+      const uploadOptions = {
         folder: `narayana_templates/${String(subcategoryInput).toLowerCase().trim()}`,
         resource_type: 'image',
-        transformation: [{ aspect_ratio: '9:16', crop: 'fill', gravity: 'auto', quality: 'auto', fetch_format: 'auto' }]
-      });
+      };
+
+      // Only apply auto-crop if we didn't manually crop
+      if (!hasCrop) {
+        uploadOptions.transformation = [{ aspect_ratio: '9:16', crop: 'fill', gravity: 'auto', quality: 'auto', fetch_format: 'auto' }];
+      } else {
+        uploadOptions.transformation = [{ quality: 'auto', fetch_format: 'auto' }];
+      }
+
+      const uploadResult = await cloudinary.uploader.upload(filePathToUpload, uploadOptions);
 
       console.log('✅ Image uploaded to Cloudinary:', uploadResult.secure_url);
 
-      // Clean up temporary file
+      // Clean up temporary file(s)
       try {
-        fs.unlinkSync(req.file.path);
+        fs.unlinkSync(filePathToUpload);
       } catch (err) {
         console.warn('Failed to delete temp file:', err);
+      }
+      // Also try to delete original if it's different
+      if (filePathToUpload !== req.file.path) {
+        try { fs.unlinkSync(req.file.path); } catch {}
       }
 
       const normalizedMain = mainCategoryRaw ? String(mainCategoryRaw).toLowerCase().trim() : null;

@@ -63,8 +63,8 @@
     h1, h2 { letter-spacing: .3px; }
 
     /* Visual editor */
-    .editor-canvas { position: relative; background: #0b1220; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; width: 100%; height: auto; max-height: 480px; margin: 0 auto; }
-.editor-canvas img { width: 100%; height: 100%; display: block; user-select: none; pointer-events: none; object-fit: cover; object-position: center; }
+    .editor-canvas { position: relative; background: #0b1220; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; margin: 0 auto; }
+.editor-canvas img { display: block; user-select: none; pointer-events: none; width: 100%; height: 100%; }
 .overlay-box { position: absolute; border: 2px dashed #94a3b8; color: #e5e7eb; background: rgba(148,163,184,.08); border-radius: 10px; cursor: grab; display: flex; align-items: start; }
     .overlay-box:active { cursor: grabbing; }
     .overlay-box span { font-size: 12px; margin: 6px; padding: 2px 6px; border-radius: 999px; background: rgba(0,0,0,.35); }
@@ -72,6 +72,12 @@
     .overlay-box.photo span { background: rgba(34,211,238,.2); }
 .overlay-box.text { border-color: #f472b6; background: rgba(244,114,182,.08); }
     .overlay-box.text span { background: rgba(244,114,182,.2); }
+    .overlay-box.crop { border-color: #10b981; border-width: 3px; border-style: solid; background: rgba(16,185,129,.1); }
+    .overlay-box.crop span { background: rgba(16,185,129,.3); }
+    .resize-handle { position: absolute; width: 14px; height: 14px; background: #10b981; border: 2px solid #fff; border-radius: 3px; cursor: nwse-resize; }
+    .resize-handle.br { bottom: -7px; right: -7px; }
+    .crop-toggle { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+    .crop-toggle input[type="checkbox"] { width: 18px; height: 18px; accent-color: #10b981; }
   </style>
   <script src="/public-config.js"></script>
 </head>
@@ -111,9 +117,18 @@
       </div>
 
       <div id="imageEditor" class="card" style="margin-top:.75rem; display:none;">
-        <div class="hint">Drag the boxes to set positions. Values auto-fill for the image upload.</div>
+        <div class="hint">Drag the boxes to set positions. Enable crop to select the area to keep.</div>
+        <div class="crop-toggle">
+          <input type="checkbox" id="enableCrop" />
+          <label for="enableCrop" style="font-weight:600; color:#10b981;">Enable Crop (9:16 aspect ratio)</label>
+          <span class="hint" style="margin-left:auto;" id="cropInfo"></span>
+        </div>
         <div id="editorCanvas" class="editor-canvas" style="margin-top:.5rem;">
           <img id="previewImg" alt="preview" />
+          <div id="cropBox" class="overlay-box crop" style="left:0; top:0; display:none;">
+            <span>Crop Area</span>
+            <div class="resize-handle br"></div>
+          </div>
           <div id="photoBox" class="overlay-box photo" style="left:20px; top:20px;"><span>Photo</span></div>
           <div id="textBox" class="overlay-box text" style="left:180px; top:20px;"><span>Text</span></div>
         </div>
@@ -123,6 +138,13 @@
           <span class="hint">Photo: <span id="photoPos">(0,0)</span> • Text: <span id="textPos">(0,0)</span></span>
         </div>
       </div>
+
+      <input type="hidden" name="crop_x" id="crop_x" />
+      <input type="hidden" name="crop_y" id="crop_y" />
+      <input type="hidden" name="crop_w" id="crop_w" />
+      <input type="hidden" name="crop_h" id="crop_h" />
+      <input type="hidden" name="preview_w" id="preview_w" />
+      <input type="hidden" name="preview_h" id="preview_h" />
 
       <details>
         <summary>Optional placement coordinates (images only)</summary>
@@ -263,6 +285,19 @@
     const inputTextX = singleForm.querySelector('input[name="text_x"]');
     const inputTextY = singleForm.querySelector('input[name="text_y"]');
 
+    // Crop elements
+    const enableCropCheckbox = document.getElementById('enableCrop');
+    const cropBox = document.getElementById('cropBox');
+    const cropInfo = document.getElementById('cropInfo');
+    const inputCropX = document.getElementById('crop_x');
+    const inputCropY = document.getElementById('crop_y');
+    const inputCropW = document.getElementById('crop_w');
+    const inputCropH = document.getElementById('crop_h');
+    const inputPreviewW = document.getElementById('preview_w');
+    const inputPreviewH = document.getElementById('preview_h');
+    let originalImageWidth = 0;
+    let originalImageHeight = 0;
+
     function detectType(file) {
       if (!file) return { kind: 'unknown' };
       const mime = (file.type || '').toLowerCase();
@@ -289,21 +324,60 @@
       if (!file) { editorWrap.style.display = 'none'; return; }
       const kind = detectType(file).kind;
 
-      const showFromDataUrl = (dataUrl) => {
-        previewImg.onload = () => { centerBoxes(); updateOutputs(); };
+      const showFromDataUrl = (dataUrl, imgW, imgH) => {
+        previewImg.onload = () => {
+          sizeCanvasToImage(previewImg.naturalWidth || imgW, previewImg.naturalHeight || imgH);
+          centerBoxes();
+          updateOutputs();
+          if (enableCropCheckbox.checked) {
+            initCropBox();
+            updateCropOutputs();
+          }
+        };
         previewImg.src = dataUrl;
         editorWrap.style.display = '';
       };
 
+      // Size canvas to show image in its actual aspect ratio (scaled to fit max dimensions)
+      function sizeCanvasToImage(imgW, imgH) {
+        const maxW = 600; // Max preview width
+        const maxH = 500; // Max preview height
+        let w = imgW, h = imgH;
+
+        // Scale down if needed
+        if (w > maxW) {
+          h = Math.round(h * (maxW / w));
+          w = maxW;
+        }
+        if (h > maxH) {
+          w = Math.round(w * (maxH / h));
+          h = maxH;
+        }
+
+        editorCanvas.style.width = w + 'px';
+        editorCanvas.style.height = h + 'px';
+        console.log(`📐 Canvas sized to ${w}x${h} (original: ${imgW}x${imgH})`);
+      }
+
       if (kind === 'image') {
         const url = URL.createObjectURL(file);
-        previewImg.onload = () => { URL.revokeObjectURL(url); centerBoxes(); updateOutputs(); };
+        previewImg.onload = () => {
+          URL.revokeObjectURL(url);
+          // Size canvas to match actual image aspect ratio
+          sizeCanvasToImage(previewImg.naturalWidth, previewImg.naturalHeight);
+          centerBoxes();
+          updateOutputs();
+          if (enableCropCheckbox.checked) {
+            initCropBox();
+            updateCropOutputs();
+          }
+        };
         previewImg.src = url;
         editorWrap.style.display = '';
       } else if (kind === 'video') {
         try {
-          const thumb = await generateVideoThumbnail(file);
-          showFromDataUrl(thumb);
+          const { dataUrl, width, height } = await generateVideoThumbnail(file);
+          showFromDataUrl(dataUrl, width, height);
         } catch (e) {
           console.warn('Could not extract video frame:', e?.message || e);
           editorWrap.style.display = 'none';
@@ -328,7 +402,9 @@
             const ctx = canvas.getContext('2d');
             ctx.drawImage(video, 0, 0, w, h);
             URL.revokeObjectURL(url);
-            try { resolve(canvas.toDataURL('image/jpeg', 0.85)); } catch (e) { reject(e); }
+            try {
+              resolve({ dataUrl: canvas.toDataURL('image/jpeg', 0.85), width: w, height: h });
+            } catch (e) { reject(e); }
           };
           // Try around 0.5s; if not seekable, fallback to 0
           video.currentTime = Math.min(0.5, (video.duration || 1) - 0.1);
@@ -341,40 +417,46 @@
     }
 
     function centerBoxes() {
-      // Fit a 9:16 canvas within the card width, clamped to 480px height
-      const parentW = editorCanvas.parentElement.getBoundingClientRect().width;
-      let H = Math.round(Math.min(parentW * 16 / 9, 480));
-      let W = Math.round(H * 9 / 16);
-      editorCanvas.style.width = W + 'px';
-      editorCanvas.style.height = H + 'px';
+      // Use current canvas size (already set by sizeCanvasToImage)
+      const canvasR = editorCanvas.getBoundingClientRect();
+      const W = canvasR.width;
+      const H = canvasR.height;
+
       // Base sizes (before scaling). Photo 1:1, Text free ratio (decoupled width/height)
-      let photoSize = Math.max(100, Math.round(Math.min(W, H) * 0.30));
-      let textW = Math.max(120, Math.round(W * 0.50));
-      let textH = Math.max(50, Math.round(H * 0.12));
-      // Scale both to 75% of their original size
-      const scale = 0.75;
-      photoSize = Math.round(photoSize * scale);
-      textW = Math.round(textW * scale);
-      textH = Math.round(textH * scale);
-      photoBox.style.width = photoSize + 'px'; photoBox.style.height = photoSize + 'px';
-      textBox.style.width = textW + 'px'; textBox.style.height = textH + 'px';
-      photoBox.style.left = Math.max(0, Math.round((W - pw) * 0.5)) + 'px';
-      photoBox.style.top = Math.max(0, Math.round((H - ph) * 0.45)) + 'px';
-      textBox.style.left = Math.max(0, Math.round((W - tw) * 0.5)) + 'px';
-      textBox.style.top = Math.max(0, Math.round((H - th) * 0.75)) + 'px';
+      let photoSize = Math.max(60, Math.round(Math.min(W, H) * 0.25));
+      let textW = Math.max(80, Math.round(W * 0.40));
+      let textH = Math.max(30, Math.round(H * 0.10));
+
+      photoBox.style.width = photoSize + 'px';
+      photoBox.style.height = photoSize + 'px';
+      textBox.style.width = textW + 'px';
+      textBox.style.height = textH + 'px';
+
+      // Center photo box
+      photoBox.style.left = Math.max(0, Math.round((W - photoSize) * 0.5)) + 'px';
+      photoBox.style.top = Math.max(0, Math.round((H - photoSize) * 0.35)) + 'px';
+
+      // Center text box below photo
+      textBox.style.left = Math.max(0, Math.round((W - textW) * 0.5)) + 'px';
+      textBox.style.top = Math.max(0, Math.round((H - textH) * 0.7)) + 'px';
     }
 
     function clamp(n, min, max) { return Math.max(min, Math.min(max, n)); }
 
-    function makeDraggable(el) {
+    function makeDraggable(el, isCropBox = false) {
       let dragging = false;
       let offsetX = 0, offsetY = 0;
       el.addEventListener('pointerdown', (e) => {
+        if (e.target.classList.contains('resize-handle')) return; // Don't drag when resizing
         dragging = true; el.setPointerCapture(e.pointerId);
         const r = el.getBoundingClientRect();
         offsetX = e.clientX - r.left; offsetY = e.clientY - r.top;
       });
-      el.addEventListener('pointerup', (e) => { dragging = false; el.releasePointerCapture(e.pointerId); updateOutputs(); });
+      el.addEventListener('pointerup', (e) => {
+        dragging = false; el.releasePointerCapture(e.pointerId);
+        updateOutputs();
+        if (isCropBox) updateCropOutputs();
+      });
       el.addEventListener('pointercancel', () => { dragging = false; });
       el.addEventListener('pointermove', (e) => {
         if (!dragging) return;
@@ -388,6 +470,7 @@
         el.style.left = x + 'px';
         el.style.top = y + 'px';
         updateOutputs();
+        if (isCropBox) updateCropOutputs();
       });
     }
 
@@ -408,6 +491,94 @@
 
     makeDraggable(photoBox);
     makeDraggable(textBox);
+    makeDraggable(cropBox, true); // true = also update crop outputs
+
+    // Crop box toggle
+    enableCropCheckbox.addEventListener('change', () => {
+      if (enableCropCheckbox.checked) {
+        cropBox.style.display = 'block';
+        initCropBox();
+        updateCropOutputs();
+      } else {
+        cropBox.style.display = 'none';
+        clearCropInputs();
+      }
+    });
+
+    function initCropBox() {
+      const canvasR = editorCanvas.getBoundingClientRect();
+      // Default crop box: 9:16 aspect ratio, centered
+      const aspectRatio = 9 / 16;
+      let cropH = Math.round(canvasR.height * 0.8);
+      let cropW = Math.round(cropH * aspectRatio);
+      if (cropW > canvasR.width * 0.9) {
+        cropW = Math.round(canvasR.width * 0.9);
+        cropH = Math.round(cropW / aspectRatio);
+      }
+      cropBox.style.width = cropW + 'px';
+      cropBox.style.height = cropH + 'px';
+      cropBox.style.left = Math.round((canvasR.width - cropW) / 2) + 'px';
+      cropBox.style.top = Math.round((canvasR.height - cropH) / 2) + 'px';
+    }
+
+    function updateCropOutputs() {
+      if (!enableCropCheckbox.checked) return;
+      const c = editorCanvas.getBoundingClientRect();
+      const crop = cropBox.getBoundingClientRect();
+      const cx = Math.round(crop.left - c.left);
+      const cy = Math.round(crop.top - c.top);
+      const cw = Math.round(crop.width);
+      const ch = Math.round(crop.height);
+      inputCropX.value = cx;
+      inputCropY.value = cy;
+      inputCropW.value = cw;
+      inputCropH.value = ch;
+      inputPreviewW.value = Math.round(c.width);
+      inputPreviewH.value = Math.round(c.height);
+      cropInfo.textContent = `Crop: ${cw}x${ch} at (${cx},${cy})`;
+    }
+
+    function clearCropInputs() {
+      inputCropX.value = '';
+      inputCropY.value = '';
+      inputCropW.value = '';
+      inputCropH.value = '';
+      inputPreviewW.value = '';
+      inputPreviewH.value = '';
+      cropInfo.textContent = '';
+    }
+
+    // Make crop box resizable (bottom-right handle)
+    const resizeHandle = cropBox.querySelector('.resize-handle.br');
+    let resizing = false;
+    resizeHandle.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+      resizing = true;
+      resizeHandle.setPointerCapture(e.pointerId);
+    });
+    resizeHandle.addEventListener('pointerup', (e) => {
+      resizing = false;
+      resizeHandle.releasePointerCapture(e.pointerId);
+      updateCropOutputs();
+    });
+    resizeHandle.addEventListener('pointermove', (e) => {
+      if (!resizing) return;
+      const canvasR = editorCanvas.getBoundingClientRect();
+      const cropR = cropBox.getBoundingClientRect();
+      const aspectRatio = 9 / 16;
+      // Calculate new width based on mouse position
+      let newW = e.clientX - cropR.left;
+      newW = Math.max(50, Math.min(newW, canvasR.width - (cropR.left - canvasR.left)));
+      let newH = Math.round(newW / aspectRatio);
+      // Constrain height to canvas
+      if (cropR.top - canvasR.top + newH > canvasR.height) {
+        newH = canvasR.height - (cropR.top - canvasR.top);
+        newW = Math.round(newH * aspectRatio);
+      }
+      cropBox.style.width = newW + 'px';
+      cropBox.style.height = newH + 'px';
+      updateCropOutputs();
+    });
 
     singleForm.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -421,6 +592,25 @@
 
       const fd = new FormData();
       const main = (mainSelect.value || '').trim();
+      // Include crop coordinates if enabled
+      const cropEnabled = enableCropCheckbox.checked;
+      if (cropEnabled) {
+        console.log('📐 Sending crop data:', {
+          crop_x: inputCropX.value,
+          crop_y: inputCropY.value,
+          crop_w: inputCropW.value,
+          crop_h: inputCropH.value,
+          preview_w: inputPreviewW.value,
+          preview_h: inputPreviewH.value,
+        });
+        fd.append('crop_x', inputCropX.value);
+        fd.append('crop_y', inputCropY.value);
+        fd.append('crop_w', inputCropW.value);
+        fd.append('crop_h', inputCropH.value);
+        fd.append('preview_w', inputPreviewW.value);
+        fd.append('preview_h', inputPreviewH.value);
+      }
+
       if (kind === 'image') {
         fd.append('image', file);
         fd.append('subcategory', sub);
