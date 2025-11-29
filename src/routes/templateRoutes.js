@@ -45,6 +45,9 @@ router.post('/upload', upload.single('image'), TemplateController.uploadAndSaveT
 // GET /api/templates - List all templates (with optional category filter)
 router.get('/', TemplateController.listTemplates);
 
+// GET /api/templates/categories - Get distinct subcategories
+router.get('/categories', TemplateController.getDistinctCategories);
+
 // New: Batch fetch by subcategory/main with ordered serial_no
 router.get('/batch', TemplateController.batchBySubcategory);
 

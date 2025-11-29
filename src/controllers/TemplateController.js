@@ -2,6 +2,7 @@ import cloudinary from '../utils/cloudinary.js';
 import fs from 'fs';
 import Template from '../models/Template.js';
 
+
 // Best-effort derive Cloudinary public_id from a secure_url
 function derivePublicIdFromUrl(url) {
   try {
@@ -419,6 +420,41 @@ class TemplateController {
     } catch (error) {
       console.error('❌ Error in getLatestByMainAndSub:', error);
       return res.status(500).json({ success: false, error: error.message || 'Failed to get latest by main and subcategory' });
+    }
+  }
+
+  // GET /api/templates/categories - Get distinct subcategories from database
+  getDistinctCategories = async (req, res) => {
+    try {
+      // Get distinct subcategories from templates collection
+      const subcategories = await Template.distinct('subcategory');
+
+      // Filter out null/empty values and normalize
+      const validSubcategories = subcategories
+        .filter(s => s && typeof s === 'string' && s.trim())
+        .map(s => s.toLowerCase().trim())
+        .filter((v, i, arr) => arr.indexOf(v) === i) // unique
+        .sort();
+
+      // Format as category objects with key and label (no icons)
+      const categories = validSubcategories.map(sub => ({
+        key: sub,
+        label: sub.charAt(0).toUpperCase() + sub.slice(1), // Capitalize first letter
+      }));
+
+      return res.json({
+        success: true,
+        data: {
+          categories,
+          total: categories.length
+        }
+      });
+    } catch (error) {
+      console.error('❌ Error in getDistinctCategories:', error);
+      return res.status(500).json({
+        success: false,
+        error: error.message || 'Failed to get categories'
+      });
     }
   }
 
