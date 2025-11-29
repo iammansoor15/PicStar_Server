@@ -24,7 +24,7 @@ const parseFileSize = (sizeStr) => {
 const config = {
     app: {
         port: process.env.PORT || 10000,
-        host: process.env.SERVER_HOST || (process.env.NODE_ENV === 'production' ? '0.0.0.0' : '127.0.0.1'),
+        host: process.env.SERVER_HOST || '0.0.0.0', // Listen on all interfaces to allow connections from mobile devices
         env: process.env.NODE_ENV || 'development',
         apiPrefix: '/api',
         // Server URL from environment or localhost for development

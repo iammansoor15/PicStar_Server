@@ -179,6 +179,8 @@ class VideoController {
         videoUrl: videoUrl.substring(0, 80) + '...',
         photoCount: overlays?.photos?.length || 0,
         textCount: overlays?.texts?.length || 0,
+        hasBanner: !!overlays?.banner,
+        bannerDimensions: overlays?.banner ? `${overlays.banner.width}x${overlays.banner.height} at (${overlays.banner.x},${overlays.banner.y})` : 'none',
         dimensions,
         timestamp: new Date().toISOString()
       });
@@ -292,6 +294,44 @@ class VideoController {
         }
       }
 
+      // Download banner overlay if present
+      let bannerInput = null;
+      if (overlays?.banner && overlays.banner.uri) {
+        console.log(`🏷️ [${requestId}] Downloading banner overlay...`);
+        console.log(`   Banner URI: ${overlays.banner.uri.substring(0, 60)}...`);
+        console.log(`   Banner dimensions: ${overlays.banner.width}x${overlays.banner.height} at (${overlays.banner.x}, ${overlays.banner.y})`);
+
+        const bannerPath = path.join(tempDir, `banner_${timestamp}.png`);
+        const bannerDownloadStart = Date.now();
+
+        try {
+          const bannerResponse = await axios({
+            url: overlays.banner.uri,
+            method: 'GET',
+            responseType: 'stream'
+          });
+          const bannerWriter = fs.createWriteStream(bannerPath);
+          bannerResponse.data.pipe(bannerWriter);
+          await new Promise((resolve, reject) => {
+            bannerWriter.on('finish', resolve);
+            bannerWriter.on('error', reject);
+          });
+
+          const bannerDownloadTime = Date.now() - bannerDownloadStart;
+          const bannerSize = fs.statSync(bannerPath).size;
+          console.log(`   ✅ Banner downloaded in ${bannerDownloadTime}ms (${(bannerSize / 1024).toFixed(2)} KB)`);
+
+          inputs.push(`-i "${bannerPath}"`);
+          bannerInput = {
+            index: inputIndex++,
+            ...overlays.banner,
+            path: bannerPath
+          };
+        } catch (bannerError) {
+          console.error(`   ❌ Failed to download banner: ${bannerError.message}`);
+        }
+      }
+
       // Build filter complex
       console.log(`🔧 [${requestId}] Building FFmpeg filter complex...`);
       let previousOutput = '[0:v]';
@@ -316,6 +356,29 @@ class VideoController {
         );
         previousOutput = `[${outputName}]`;
       });
+
+      // Overlay banner (at the top of the video)
+      if (bannerInput) {
+        console.log(`   Adding banner overlay`);
+        const scaledBannerX = Math.round(bannerInput.x * scaleX);
+        const scaledBannerY = Math.round(bannerInput.y * scaleY);
+        const scaledBannerWidth = Math.round(bannerInput.width * scaleX);
+        const scaledBannerHeight = Math.round(bannerInput.height * scaleY);
+
+        console.log(`   Banner: (${bannerInput.x},${bannerInput.y}) ${bannerInput.width}x${bannerInput.height} -> (${scaledBannerX},${scaledBannerY}) ${scaledBannerWidth}x${scaledBannerHeight}`);
+
+        // Update the previous output name if needed
+        if (previousOutput === '[out]') {
+          filters[filters.length - 1] = filters[filters.length - 1].replace('[out]', '[pre_banner]');
+          previousOutput = '[pre_banner]';
+        }
+
+        filters.push(
+          `[${bannerInput.index}:v]scale=${scaledBannerWidth}:${scaledBannerHeight}[scaled_banner]`,
+          `${previousOutput}[scaled_banner]overlay=${scaledBannerX}:${scaledBannerY}[out]`
+        );
+        previousOutput = '[out]';
+      }
 
       // Add text overlays with backgrounds
       if (overlays?.texts && Array.isArray(overlays.texts) && overlays.texts.length > 0) {
@@ -415,11 +478,18 @@ class VideoController {
         fs.unlinkSync(outputPath);
         cleanupCount++;
         photoInputs.forEach(p => {
-          try { 
+          try {
             fs.unlinkSync(p.path);
             cleanupCount++;
           } catch (e) {}
         });
+        // Cleanup banner file if it exists
+        if (bannerInput && bannerInput.path) {
+          try {
+            fs.unlinkSync(bannerInput.path);
+            cleanupCount++;
+          } catch (e) {}
+        }
         console.log(`   ✅ Cleaned up ${cleanupCount} file(s)`);
       } catch (e) {
         console.warn(`   ⚠️ Cleanup warning: ${e.message}`);
