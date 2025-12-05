@@ -9,6 +9,7 @@ import authRoutes from './routes/auth-routes.js';
 import profilePhotoRoutes from './routes/profile-photo-routes.js';
 import paymentRoutes from './routes/payment-routes.js';
 import notificationRoutes from './routes/notification-routes.js';
+import privacyRoutes from './routes/privacy-routes.js';
 import notificationService from './services/notification-service.js';
 import { connectDB } from './config/db.js';
 import { errorHandler } from './middleware/error-handler.js';
@@ -65,6 +66,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/profile-photo', profilePhotoRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/privacy', privacyRoutes);
 
 // 404 handler - must be after all routes
 app.use((req, res) => {
