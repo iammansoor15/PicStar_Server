@@ -20,12 +20,15 @@
     .btn.danger { background: linear-gradient(180deg, #dc2626, #b91c1c); border-color: #7f1d1d; }
     .btn.danger:hover { box-shadow: 0 10px 24px rgba(220,38,38,0.45); }
     .card { border: 1px solid var(--border); border-radius: 14px; padding: 16px; background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)) , var(--panel); box-shadow: var(--shadow); }
-    .filters { display: grid; grid-template-columns: 1fr 1fr auto auto; gap: .75rem; align-items: center; }
+    .filters { display: grid; grid-template-columns: 1fr 1fr 1fr auto auto; gap: .75rem; align-items: center; }
+    .checkbox-group { display: flex; flex-direction: column; gap: .4rem; }
+    .checkbox-group label { font-weight: 400; display: flex; align-items: center; gap: .5rem; cursor: pointer; }
+    .checkbox-group input[type="checkbox"] { width: auto; cursor: pointer; }
     label { font-weight: 600; color: #e5e7eb; }
     select, input[type="text"] { width: 100%; padding: .65rem .8rem; border: 1px solid #334155; border-radius: 10px; background: var(--panel-2); color: var(--txt); outline: none; }
     .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: .9rem; margin-top: 1rem; }
     .tile { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: #0b1220; box-shadow: var(--shadow); }
-    .tile img { width: 100%; height: 320px; object-fit: cover; display: block; }
+    .tile img, .tile video { width: 100%; height: 320px; object-fit: cover; display: block; }
     .tile .meta { padding: .5rem .75rem; font-size: .9rem; color: var(--muted); display: flex; justify-content: space-between; align-items: center; gap: .5rem; }
     .toolbar { display: flex; gap: .5rem; align-items: center; margin-top: .5rem; }
     .hint { color: var(--muted); font-size: .9rem; }
@@ -51,6 +54,12 @@
         <div>
           <label for="subSelect">Subcategory</label>
           <select id="subSelect"></select>
+        </div>
+        <div class="checkbox-group">
+          <label style="font-weight: 600;">Resource Type</label>
+          <label><input type="checkbox" id="showPhotos" checked> Photos</label>
+          <label><input type="checkbox" id="showVideos" checked> Videos</label>
+          <label><input type="checkbox" id="showBanners" checked> Banners</label>
         </div>
         <button id="applyFilter" class="btn">Filter</button>
         <button id="clearFilter" class="btn secondary">Clear</button>
@@ -80,6 +89,9 @@
     const prevBtn = document.getElementById('prevPage');
     const nextBtn = document.getElementById('nextPage');
     const pageInfo = document.getElementById('pageInfo');
+    const showPhotos = document.getElementById('showPhotos');
+    const showVideos = document.getElementById('showVideos');
+    const showBanners = document.getElementById('showBanners');
 
     let currPage = 1;
     const PAGE_SIZE = 30;
@@ -152,16 +164,43 @@
       if (sub) params.set('subcategory', sub);
       const res = await fetch(apiUrl(`/api/templates?${params.toString()}`));
       const data = await res.json().catch(() => ({}));
-      const items = data?.data?.templates || [];
+      let items = data?.data?.templates || [];
+
+      // Client-side filtering based on checkboxes
+      items = items.filter(t => {
+        const subLower = (t.subcategory || t.category || '').toLowerCase();
+        const isBanner = subLower === 'banner' || subLower === 'banners';
+        const isVideo = t.resource_type === 'video';
+        const isPhoto = !isVideo && !isBanner;
+
+        if (isPhoto && !showPhotos.checked) return false;
+        if (isVideo && !showVideos.checked) return false;
+        if (isBanner && !showBanners.checked) return false;
+        return true;
+      });
+
       const pg = data?.data?.pagination || { page: currPage, pages: currPage };
       grid.innerHTML = '';
       for (const t of items) {
         const div = document.createElement('div');
         div.className = 'tile';
-        const img = document.createElement('img');
-        img.loading = 'lazy';
-        img.src = t.image_url;
-        img.alt = `${t.subcategory || t.category || ''} #${t.serial_no || ''}`;
+
+        // Create either img or video element based on resource_type
+        let mediaEl;
+        if (t.resource_type === 'video' && t.video_url) {
+          mediaEl = document.createElement('video');
+          mediaEl.src = t.video_url;
+          mediaEl.controls = true;
+          mediaEl.muted = true;
+          mediaEl.loop = true;
+          mediaEl.preload = 'metadata';
+        } else {
+          mediaEl = document.createElement('img');
+          mediaEl.loading = 'lazy';
+          mediaEl.src = t.image_url;
+        }
+        mediaEl.alt = `${t.subcategory || t.category || ''} #${t.serial_no || ''}`;
+
         const meta = document.createElement('div');
         meta.className = 'meta';
         const left = document.createElement('div');
@@ -188,7 +227,7 @@
         meta.appendChild(left);
         meta.appendChild(right);
         meta.appendChild(del);
-        div.appendChild(img);
+        div.appendChild(mediaEl);
         div.appendChild(meta);
         grid.appendChild(div);
       }
@@ -202,6 +241,9 @@
     clearBtn.addEventListener('click', () => {
       mainSelect.value = '';
       subSelect.value = '';
+      showPhotos.checked = true;
+      showVideos.checked = true;
+      showBanners.checked = true;
       currPage = 1;
       fetchAndRender().catch(console.error);
     });
