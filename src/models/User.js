@@ -19,6 +19,19 @@ const userSchema = new mongoose.Schema(
       lastTransactionId: { type: mongoose.Schema.Types.ObjectId, ref: 'Transaction', default: null },
       createdAt: { type: Date, default: null },
     },
+    // Account status for soft delete with grace period
+    accountStatus: {
+      type: String,
+      enum: ['active', 'pending', 'deleted'],
+      default: 'active',
+      index: true,
+    },
+    // When account deletion is scheduled (15 days from pending status)
+    deletionScheduledAt: {
+      type: Date,
+      default: null,
+      index: true, // Index for efficient cron job queries
+    },
   },
   { timestamps: true }
 );

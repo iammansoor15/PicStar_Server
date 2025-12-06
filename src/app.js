@@ -10,6 +10,7 @@ import profilePhotoRoutes from './routes/profile-photo-routes.js';
 import paymentRoutes from './routes/payment-routes.js';
 import notificationRoutes from './routes/notification-routes.js';
 import privacyRoutes from './routes/privacy-routes.js';
+import winterRoutes from './routes/winter-routes.js';
 import notificationService from './services/notification-service.js';
 import { connectDB } from './config/db.js';
 import { errorHandler } from './middleware/error-handler.js';
@@ -17,6 +18,7 @@ import { rateLimiter } from './middleware/rate-limit.js';
 import { requestLogger, logger } from './middleware/logger.js';
 import config from './config/config.js';
 import cleanupService from './utils/cleanup-service.js';
+import accountDeletionCron from './jobs/account-deletion-cron.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -67,6 +69,7 @@ app.use('/api/profile-photo', profilePhotoRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/privacy', privacyRoutes);
+app.use('/winter', winterRoutes);
 
 // 404 handler - must be after all routes
 app.use((req, res) => {
@@ -98,6 +101,8 @@ cleanupService.start();
 // Start notification service
 notificationService.start();
 
+// Start account deletion cron job
+accountDeletionCron.start();
 
 // Create logs directory if it doesn't exist
 ensureDirectoryExists(config.paths.logs);

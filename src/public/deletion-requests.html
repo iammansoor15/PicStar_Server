@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Deletion Requests - Winter</title>
+  <style>
+    :root { --bg:#0b0f14; --panel:#111827; --txt:#e5e7eb; --muted:#9ca3af; --border:#1f2937; --accent:#6366f1; --success:#10b981; --warning:#f59e0b; --error:#ef4444; }
+    body { font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 0; padding: 32px 20px; min-height: 100vh; line-height: 1.6; color: var(--txt); background: radial-gradient(900px 500px at 10% -10%, rgba(99,102,241,.15), transparent 60%), var(--bg); }
+    .container { max-width: 1200px; margin: 0 auto; }
+    h1 { margin: 0 0 0.5rem 0; font-size: 2rem; }
+    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; flex-wrap: wrap; gap: 1rem; }
+    .filters { display: flex; gap: 1rem; flex-wrap: wrap; }
+    select { padding: 0.5rem 1rem; background: var(--panel); color: var(--txt); border: 1px solid var(--border); border-radius: 8px; font-family: inherit; cursor: pointer; }
+    select:focus { outline: none; border-color: var(--accent); }
+    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
+    .stat-card { background: var(--panel); padding: 1.5rem; border-radius: 12px; border: 1px solid var(--border); }
+    .stat-value { font-size: 2rem; font-weight: 700; color: var(--accent); }
+    .stat-label { color: var(--muted); font-size: 0.875rem; margin-top: 0.25rem; }
+    .table-container { background: var(--panel); border-radius: 12px; border: 1px solid var(--border); overflow: hidden; }
+    table { width: 100%; border-collapse: collapse; }
+    th { background: var(--bg); padding: 1rem; text-align: left; font-weight: 600; border-bottom: 1px solid var(--border); position: sticky; top: 0; }
+    td { padding: 1rem; border-bottom: 1px solid var(--border); }
+    tr:last-child td { border-bottom: none; }
+    tr:hover { background: rgba(99, 102, 241, 0.05); }
+    .status-badge { display: inline-block; padding: 0.25rem 0.75rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; }
+    .status-pending { background: rgba(245, 158, 11, 0.2); color: var(--warning); }
+    .status-processing { background: rgba(99, 102, 241, 0.2); color: var(--accent); }
+    .status-completed { background: rgba(16, 185, 129, 0.2); color: var(--success); }
+    .actions { display: flex; gap: 0.5rem; }
+    .btn { padding: 0.5rem 1rem; border: none; border-radius: 6px; cursor: pointer; font-size: 0.875rem; font-weight: 500; transition: all 0.2s; }
+    .btn-primary { background: var(--accent); color: white; }
+    .btn-success { background: var(--success); color: white; }
+    .btn:hover { opacity: 0.9; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .loading { text-align: center; padding: 3rem; color: var(--muted); }
+    .empty { text-align: center; padding: 3rem; color: var(--muted); }
+    .pagination { display: flex; justify-content: center; gap: 0.5rem; margin-top: 1.5rem; padding: 1rem; }
+    .page-btn { padding: 0.5rem 1rem; background: var(--panel); border: 1px solid var(--border); color: var(--txt); border-radius: 6px; cursor: pointer; }
+    .page-btn.active { background: var(--accent); border-color: var(--accent); }
+    .page-btn:hover:not(.active) { border-color: var(--accent); }
+    .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000; }
+    .modal.active { display: flex; align-items: center; justify-content: center; }
+    .modal-content { background: var(--panel); border-radius: 12px; padding: 2rem; max-width: 500px; width: 90%; border: 1px solid var(--border); }
+    .modal-header { margin-bottom: 1.5rem; }
+    .modal-header h2 { margin: 0; }
+    .form-group { margin-bottom: 1.5rem; }
+    label { display: block; margin-bottom: 0.5rem; font-weight: 500; }
+    textarea { width: 100%; padding: 0.75rem; background: var(--bg); color: var(--txt); border: 1px solid var(--border); border-radius: 8px; font-family: inherit; min-height: 80px; box-sizing: border-box; }
+    .modal-actions { display: flex; gap: 1rem; justify-content: flex-end; }
+    .phone-cell { font-family: 'Courier New', monospace; }
+    .date-cell { color: var(--muted); font-size: 0.875rem; }
+  </style>
+  <script src="/public-config.js"></script>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div>
+        <h1>Account Deletion Requests</h1>
+        <p style="color: var(--muted); margin: 0.5rem 0 0 0;">Manage user account deletion requests</p>
+      </div>
+      <div class="filters">
+        <select id="statusFilter">
+          <option value="">All Status</option>
+          <option value="pending">Pending</option>
+          <option value="processing">Processing</option>
+          <option value="completed">Completed</option>
+        </select>
+        <button class="btn btn-primary" onclick="loadRequests()">Refresh</button>
+      </div>
+    </div>
+
+    <div class="stats">
+      <div class="stat-card">
+        <div class="stat-value" id="totalCount">-</div>
+        <div class="stat-label">Total Requests</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="pendingCount">-</div>
+        <div class="stat-label">Pending</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="processingCount">-</div>
+        <div class="stat-label">Processing</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="completedCount">-</div>
+        <div class="stat-label">Completed</div>
+      </div>
+    </div>
+
+    <div class="table-container">
+      <div id="loading" class="loading">Loading...</div>
+      <div id="empty" class="empty" style="display: none;">No deletion requests found</div>
+      <table id="requestsTable" style="display: none;">
+        <thead>
+          <tr>
+            <th>Phone Number</th>
+            <th>Reason</th>
+            <th>Status</th>
+            <th>Requested At</th>
+            <th>Processed At</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="requestsBody"></tbody>
+      </table>
+    </div>
+
+    <div class="pagination" id="pagination"></div>
+  </div>
+
+  <!-- Update Status Modal -->
+  <div id="updateModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Update Deletion Request</h2>
+      </div>
+      <div class="form-group">
+        <label>Phone: <span id="modalPhone" style="font-family: monospace; color: var(--accent);"></span></label>
+      </div>
+      <div class="form-group">
+        <label for="modalStatus">Status</label>
+        <select id="modalStatus" style="width: 100%;">
+          <option value="pending">Pending</option>
+          <option value="processing">Processing</option>
+          <option value="completed">Completed</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="modalNotes">Notes (Optional)</label>
+        <textarea id="modalNotes"></textarea>
+      </div>
+      <div class="modal-actions">
+        <button class="btn" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-success" onclick="updateRequest()">Update</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE_URL = window.APP_CONFIG?.API_BASE_URL || '';
+    let currentPage = 1;
+    let currentRequestId = null;
+    let allStats = { total: 0, pending: 0, processing: 0, completed: 0 };
+
+    document.getElementById('statusFilter').addEventListener('change', () => {
+      currentPage = 1;
+      loadRequests();
+    });
+
+    async function loadRequests() {
+      const statusFilter = document.getElementById('statusFilter').value;
+      const loading = document.getElementById('loading');
+      const empty = document.getElementById('empty');
+      const table = document.getElementById('requestsTable');
+
+      loading.style.display = 'block';
+      empty.style.display = 'none';
+      table.style.display = 'none';
+
+      try {
+        const params = new URLSearchParams({
+          page: currentPage,
+          limit: 50,
+        });
+        if (statusFilter) params.append('status', statusFilter);
+
+        const response = await fetch(`${API_BASE_URL}/winter/api/deletion-requests?${params}`);
+        const data = await response.json();
+
+        if (data.success) {
+          renderRequests(data.data.requests);
+          renderPagination(data.data.pagination);
+          await loadStats();
+        } else {
+          throw new Error(data.message);
+        }
+      } catch (error) {
+        console.error('Error loading requests:', error);
+        empty.textContent = 'Error loading deletion requests';
+        empty.style.display = 'block';
+      } finally {
+        loading.style.display = 'none';
+      }
+    }
+
+    async function loadStats() {
+      try {
+        const [allRes, pendingRes, processingRes, completedRes] = await Promise.all([
+          fetch(`${API_BASE_URL}/winter/api/deletion-requests?limit=1`),
+          fetch(`${API_BASE_URL}/winter/api/deletion-requests?status=pending&limit=1`),
+          fetch(`${API_BASE_URL}/winter/api/deletion-requests?status=processing&limit=1`),
+          fetch(`${API_BASE_URL}/winter/api/deletion-requests?status=completed&limit=1`),
+        ]);
+
+        const [all, pending, processing, completed] = await Promise.all([
+          allRes.json(),
+          pendingRes.json(),
+          processingRes.json(),
+          completedRes.json(),
+        ]);
+
+        document.getElementById('totalCount').textContent = all.data?.pagination?.total || 0;
+        document.getElementById('pendingCount').textContent = pending.data?.pagination?.total || 0;
+        document.getElementById('processingCount').textContent = processing.data?.pagination?.total || 0;
+        document.getElementById('completedCount').textContent = completed.data?.pagination?.total || 0;
+      } catch (error) {
+        console.error('Error loading stats:', error);
+      }
+    }
+
+    function renderRequests(requests) {
+      const tbody = document.getElementById('requestsBody');
+      const table = document.getElementById('requestsTable');
+      const empty = document.getElementById('empty');
+
+      if (!requests || requests.length === 0) {
+        empty.style.display = 'block';
+        table.style.display = 'none';
+        return;
+      }
+
+      tbody.innerHTML = requests.map(req => `
+        <tr>
+          <td class="phone-cell">${req.phone}</td>
+          <td>${req.reason || '-'}</td>
+          <td><span class="status-badge status-${req.status}">${req.status}</span></td>
+          <td class="date-cell">${new Date(req.createdAt).toLocaleString()}</td>
+          <td class="date-cell">${req.processedAt ? new Date(req.processedAt).toLocaleString() : '-'}</td>
+          <td>
+            <div class="actions">
+              ${req.status === 'completed' ?
+                '<span style="color: var(--success)">✓ Completed</span>' :
+                `<button class="btn btn-primary" style="background: var(--error);" onclick="confirmDelete('${req._id}', '${req.phone}')">Delete Account</button>`
+              }
+            </div>
+          </td>
+        </tr>
+      `).join('');
+
+      table.style.display = 'table';
+      empty.style.display = 'none';
+    }
+
+    function renderPagination(pagination) {
+      const paginationDiv = document.getElementById('pagination');
+      if (pagination.totalPages <= 1) {
+        paginationDiv.innerHTML = '';
+        return;
+      }
+
+      let html = '';
+      for (let i = 1; i <= pagination.totalPages; i++) {
+        html += `<button class="page-btn ${i === currentPage ? 'active' : ''}" onclick="goToPage(${i})">${i}</button>`;
+      }
+      paginationDiv.innerHTML = html;
+    }
+
+    function goToPage(page) {
+      currentPage = page;
+      loadRequests();
+    }
+
+    // Confirm deletion with user
+    function confirmDelete(requestId, phone) {
+      const confirmed = confirm(
+        `⚠️ Are you sure you want to schedule this account for deletion?\n\n` +
+        `Phone: ${phone}\n\n` +
+        `This will:\n` +
+        `• Set the account status to "pending"\n` +
+        `• Schedule deletion for 15 days from now\n` +
+        `• Allow the user to cancel by logging in\n\n` +
+        `Proceed?`
+      );
+
+      if (confirmed) {
+        deleteAccount(requestId, phone);
+      }
+    }
+
+    // Schedule account deletion (set to pending status)
+    async function deleteAccount(requestId, phone) {
+      try {
+        const response = await fetch(`${API_BASE_URL}/winter/api/deletion-requests/${requestId}/delete-account`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          alert(`✅ ${data.message}\n\nScheduled for: ${new Date(data.data.deletionScheduledAt).toLocaleString()}\nDays remaining: ${data.data.daysRemaining}`);
+          loadRequests(); // Refresh the table
+        } else {
+          alert(`❌ Error: ${data.message}`);
+        }
+      } catch (error) {
+        console.error('Error deleting account:', error);
+        alert('❌ Failed to schedule account deletion. Please try again.');
+      }
+    }
+
+    // Close modal on background click
+    document.getElementById('updateModal').addEventListener('click', (e) => {
+      if (e.target.id === 'updateModal') {
+        closeModal();
+      }
+    });
+
+    // Load requests on page load
+    loadRequests();
+  </script>
+</body>
+</html>

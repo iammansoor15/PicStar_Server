@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Account Deletion Request - Winter</title>
+  <style>
+    :root { --bg:#0b0f14; --panel:#111827; --txt:#e5e7eb; --muted:#9ca3af; --border:#1f2937; --accent:#6366f1; --success:#10b981; --error:#ef4444; }
+    body { font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 0; padding: 32px 20px; min-height: 100vh; line-height: 1.6; color: var(--txt); background: radial-gradient(900px 500px at 10% -10%, rgba(99,102,241,.15), transparent 60%), var(--bg); }
+    .container { max-width: 600px; margin: 0 auto; }
+    h1 { margin: 0 0 0.5rem 0; font-size: 2rem; }
+    p { margin: 0.75rem 0; color: var(--muted); }
+    .form-section { background: var(--panel); padding: 2rem; border-radius: 12px; border: 1px solid var(--border); margin: 2rem 0; }
+    label { display: block; margin-bottom: 0.5rem; font-weight: 500; }
+    input, textarea { width: 100%; padding: 0.75rem; background: var(--bg); color: var(--txt); border: 1px solid var(--border); border-radius: 8px; font-family: inherit; font-size: 1rem; box-sizing: border-box; }
+    input:focus, textarea:focus { outline: none; border-color: var(--accent); }
+    textarea { min-height: 100px; resize: vertical; }
+    .form-group { margin-bottom: 1.5rem; }
+    button { width: 100%; padding: 0.875rem; background: var(--accent); color: white; border: none; border-radius: 8px; font-size: 1rem; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+    button:hover { opacity: 0.9; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .message { padding: 1rem; border-radius: 8px; margin-bottom: 1rem; display: none; }
+    .message.success { background: rgba(16, 185, 129, 0.1); border: 1px solid var(--success); color: var(--success); }
+    .message.error { background: rgba(239, 68, 68, 0.1); border: 1px solid var(--error); color: var(--error); }
+    .info-box { background: rgba(99, 102, 241, 0.1); border: 1px solid var(--accent); border-radius: 8px; padding: 1rem; margin-bottom: 1.5rem; }
+    .info-box ul { margin: 0.5rem 0; padding-left: 1.5rem; }
+    .info-box li { margin: 0.25rem 0; }
+    .token-display { background: rgba(99, 102, 241, 0.15); border: 2px solid var(--accent); border-radius: 8px; padding: 1.5rem; margin: 1rem 0; text-align: center; }
+    .token-value { font-family: 'Courier New', monospace; font-size: 1.5rem; font-weight: 700; color: var(--accent); letter-spacing: 0.1em; margin: 0.5rem 0; }
+    .copy-btn { width: auto; padding: 0.5rem 1.5rem; font-size: 0.875rem; margin-top: 0.5rem; }
+    .status-check { margin-top: 2rem; }
+    .status-result { padding: 1.5rem; border-radius: 8px; margin-top: 1rem; display: none; }
+    .status-pending { background: rgba(245, 158, 11, 0.1); border: 1px solid #f59e0b; color: #f59e0b; }
+    .status-deleted { background: rgba(239, 68, 68, 0.1); border: 1px solid var(--error); color: var(--error); }
+    .status-active { background: rgba(16, 185, 129, 0.1); border: 1px solid var(--success); color: var(--success); }
+    .inline-btn { display: inline-block; width: auto; margin-left: 0.5rem; }
+  </style>
+  <script src="/public-config.js"></script>
+</head>
+<body>
+  <div class="container">
+    <h1>Account Deletion Request</h1>
+    <p>Submit a request to delete your Winter account and all associated data.</p>
+
+    <div class="info-box">
+      <strong>Important Information:</strong>
+      <ul>
+        <li>Your account will be scheduled for deletion with a 15-day grace period</li>
+        <li>You can cancel deletion by logging in within 15 days</li>
+        <li>After 15 days, your account will be permanently deleted</li>
+        <li>Payment transaction records may be retained for legal compliance (7 years)</li>
+      </ul>
+    </div>
+
+    <!-- Token Display (hidden by default) -->
+    <div id="tokenDisplay" class="token-display" style="display: none;">
+      <strong>✅ Deletion Request Submitted!</strong>
+      <p style="margin: 0.5rem 0; font-size: 0.875rem;">Your tracking token:</p>
+      <div class="token-value" id="tokenValue"></div>
+      <p style="margin: 0.5rem 0; font-size: 0.875rem; color: var(--muted);">Save this token to check your request status</p>
+      <button class="copy-btn" onclick="copyToken()">Copy Token</button>
+    </div>
+
+    <div class="form-section">
+      <div id="successMessage" class="message success"></div>
+      <div id="errorMessage" class="message error"></div>
+
+      <form id="deletionForm">
+        <div class="form-group">
+          <label for="phone">Phone Number *</label>
+          <input type="tel" id="phone" name="phone" required placeholder="+91XXXXXXXXXX" />
+        </div>
+
+        <div class="form-group">
+          <label for="reason">Reason for Deletion (Optional)</label>
+          <textarea id="reason" name="reason" placeholder="Please let us know why you're leaving..."></textarea>
+        </div>
+
+        <!-- OTP Section (initially hidden) -->
+        <div id="otpSection" class="form-group" style="display: none;">
+          <label for="otp">Enter OTP *</label>
+          <input type="text" id="otp" name="otp" placeholder="Enter 6-digit OTP" maxlength="6" pattern="[0-9]{6}" />
+          <p style="font-size: 0.875rem; color: var(--muted); margin-top: 0.5rem;">
+            OTP sent to your phone number. Valid for 10 minutes.
+            <button type="button" class="inline-btn" onclick="resendOTP()" id="resendBtn" style="font-size: 0.875rem; padding: 0.25rem 0.75rem;">Resend OTP</button>
+          </p>
+        </div>
+
+        <button type="button" id="sendOtpBtn" onclick="sendOTP()">Send OTP</button>
+        <button type="submit" id="submitBtn" style="display: none;">Verify & Submit Request</button>
+      </form>
+    </div>
+
+    <!-- Status Check Section -->
+    <div class="form-section status-check">
+      <h2 style="margin-top: 0; font-size: 1.5rem;">Check Request Status</h2>
+      <p style="color: var(--muted);">Enter your tracking token to check the status of your deletion request</p>
+
+      <div class="form-group">
+        <label for="statusToken">Tracking Token</label>
+        <input type="text" id="statusToken" placeholder="Enter your 8-character token" maxlength="8" style="text-transform: uppercase;" />
+      </div>
+
+      <button type="button" id="checkStatusBtn" onclick="checkStatus()">Check Status</button>
+
+      <div id="statusResult" class="status-result"></div>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE_URL = window.APP_CONFIG?.API_BASE_URL || '';
+    const form = document.getElementById('deletionForm');
+    const submitBtn = document.getElementById('submitBtn');
+    const sendOtpBtn = document.getElementById('sendOtpBtn');
+    const successMsg = document.getElementById('successMessage');
+    const errorMsg = document.getElementById('errorMessage');
+    let otpSent = false;
+
+    // Send OTP to phone number
+    async function sendOTP() {
+      const phone = document.getElementById('phone').value.trim();
+
+      if (!phone) {
+        showError('Phone number is required');
+        return;
+      }
+
+      sendOtpBtn.disabled = true;
+      sendOtpBtn.textContent = 'Sending OTP...';
+      hideMessages();
+
+      try {
+        const response = await fetch(`${API_BASE_URL}/winter/account-delete-request/send-otp`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ phone }),
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+          otpSent = true;
+          // Show OTP section and submit button
+          document.getElementById('otpSection').style.display = 'block';
+          sendOtpBtn.style.display = 'none';
+          submitBtn.style.display = 'block';
+
+          // Disable phone and reason fields
+          document.getElementById('phone').disabled = true;
+          document.getElementById('reason').disabled = true;
+
+          showSuccess('OTP sent successfully! Please check your phone.');
+
+          // Focus on OTP input
+          document.getElementById('otp').focus();
+        } else {
+          showError(data.message || 'Failed to send OTP');
+        }
+      } catch (error) {
+        console.error('Error sending OTP:', error);
+        showError('An error occurred. Please try again later.');
+      } finally {
+        sendOtpBtn.disabled = false;
+        sendOtpBtn.textContent = 'Send OTP';
+      }
+    }
+
+    // Resend OTP
+    async function resendOTP() {
+      const resendBtn = document.getElementById('resendBtn');
+      const phone = document.getElementById('phone').value.trim();
+
+      resendBtn.disabled = true;
+      resendBtn.textContent = 'Sending...';
+      hideMessages();
+
+      try {
+        const response = await fetch(`${API_BASE_URL}/winter/account-delete-request/send-otp`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ phone }),
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+          showSuccess('OTP resent successfully!');
+        } else {
+          showError(data.message || 'Failed to resend OTP');
+        }
+      } catch (error) {
+        console.error('Error resending OTP:', error);
+        showError('An error occurred. Please try again later.');
+      } finally {
+        resendBtn.disabled = false;
+        resendBtn.textContent = 'Resend OTP';
+      }
+    }
+
+    // Submit deletion request with OTP verification
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const phone = document.getElementById('phone').value.trim();
+      const reason = document.getElementById('reason').value.trim();
+      const otp = document.getElementById('otp').value.trim();
+
+      if (!phone) {
+        showError('Phone number is required');
+        return;
+      }
+
+      if (!otp || otp.length !== 6) {
+        showError('Please enter a valid 6-digit OTP');
+        return;
+      }
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Verifying...';
+      hideMessages();
+
+      try {
+        const response = await fetch(`${API_BASE_URL}/winter/account-delete-request`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ phone, reason, otp }),
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+          // Display tracking token
+          document.getElementById('tokenValue').textContent = data.data.trackingToken;
+          document.getElementById('tokenDisplay').style.display = 'block';
+
+          // Hide form
+          form.style.display = 'none';
+          hideMessages();
+
+          // Scroll to token display
+          document.getElementById('tokenDisplay').scrollIntoView({ behavior: 'smooth', block: 'center' });
+        } else {
+          showError(data.message || 'Failed to submit deletion request');
+        }
+      } catch (error) {
+        console.error('Error:', error);
+        showError('An error occurred. Please try again later.');
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Verify & Submit Request';
+      }
+    });
+
+    function showSuccess(message) {
+      successMsg.textContent = message;
+      successMsg.style.display = 'block';
+      errorMsg.style.display = 'none';
+    }
+
+    function showError(message) {
+      errorMsg.textContent = message;
+      errorMsg.style.display = 'block';
+      successMsg.style.display = 'none';
+    }
+
+    function hideMessages() {
+      successMsg.style.display = 'none';
+      errorMsg.style.display = 'none';
+    }
+
+    // Copy token to clipboard
+    function copyToken() {
+      const token = document.getElementById('tokenValue').textContent;
+      navigator.clipboard.writeText(token).then(() => {
+        const btn = event.target;
+        const originalText = btn.textContent;
+        btn.textContent = 'Copied!';
+        setTimeout(() => {
+          btn.textContent = originalText;
+        }, 2000);
+      }).catch(err => {
+        console.error('Failed to copy:', err);
+        alert('Failed to copy token');
+      });
+    }
+
+    // Check deletion request status
+    async function checkStatus() {
+      const token = document.getElementById('statusToken').value.trim().toUpperCase();
+      const statusResult = document.getElementById('statusResult');
+      const checkBtn = document.getElementById('checkStatusBtn');
+
+      if (!token || token.length !== 8) {
+        statusResult.innerHTML = '❌ Please enter a valid 8-character tracking token';
+        statusResult.className = 'status-result status-deleted';
+        statusResult.style.display = 'block';
+        return;
+      }
+
+      checkBtn.disabled = true;
+      checkBtn.textContent = 'Checking...';
+      statusResult.style.display = 'none';
+
+      try {
+        const response = await fetch(`${API_BASE_URL}/winter/api/deletion-requests/status/${token}`);
+        const data = await response.json();
+
+        if (response.ok) {
+          let html = '';
+          let className = 'status-result ';
+
+          if (data.status === 'deleted') {
+            className += 'status-deleted';
+            html = `
+              <strong>❌ Account Deleted</strong>
+              <p style="margin: 0.5rem 0;">Your Winter account has been permanently deleted.</p>
+            `;
+          } else if (data.status === 'pending') {
+            className += 'status-pending';
+            html = `
+              <strong>⏳ Deletion Scheduled</strong>
+              <p style="margin: 0.5rem 0;">${data.message}</p>
+              <p style="margin: 0.5rem 0; font-size: 0.875rem;">
+                Scheduled for: ${new Date(data.data.scheduledAt).toLocaleString()}<br/>
+                Days remaining: <strong>${data.data.daysRemaining}</strong>
+              </p>
+              <p style="margin: 0.5rem 0; font-size: 0.875rem; color: var(--muted);">
+                💡 Tip: Login to your account to cancel the deletion
+              </p>
+            `;
+          } else if (data.status === 'active') {
+            className += 'status-active';
+            html = `
+              <strong>✅ Deletion Cancelled</strong>
+              <p style="margin: 0.5rem 0;">Your deletion request was cancelled. Your account is active.</p>
+            `;
+          } else {
+            className += 'status-pending';
+            html = `
+              <strong>🔄 Processing</strong>
+              <p style="margin: 0.5rem 0;">${data.message}</p>
+            `;
+          }
+
+          statusResult.innerHTML = html;
+          statusResult.className = className;
+          statusResult.style.display = 'block';
+        } else {
+          statusResult.innerHTML = `❌ ${data.message || 'Invalid tracking token'}`;
+          statusResult.className = 'status-result status-deleted';
+          statusResult.style.display = 'block';
+        }
+      } catch (error) {
+        console.error('Error checking status:', error);
+        statusResult.innerHTML = '❌ An error occurred. Please try again later.';
+        statusResult.className = 'status-result status-deleted';
+        statusResult.style.display = 'block';
+      } finally {
+        checkBtn.disabled = false;
+        checkBtn.textContent = 'Check Status';
+      }
+    }
+
+    // Auto-uppercase token input
+    document.getElementById('statusToken').addEventListener('input', (e) => {
+      e.target.value = e.target.value.toUpperCase();
+    });
+  </script>
+</body>
+</html>

@@ -1,16 +1,32 @@
-[dotenv@17.2.3] injecting env (20) from .env -- tip: 🛠️  run anywhere with `dotenvx run -- yourcommand`
-[dotenv@17.2.3] injecting env (0) from .env -- tip: 🔑 add access controls to secrets: https://dotenvx.com/ops
+
+> narayana-image-processor@1.0.0 start
+> node src/app.js
+
+[dotenv@17.2.3] injecting env (20) from .env -- tip: ⚙️  enable debug logging with { debug: true }
 [dotenv@17.2.3] injecting env (0) from .env -- tip: ⚙️  override existing env vars with { override: true }
-🧹 Auto-cleanup is disabled (AUTO_CLEANUP_ENABLED=false)
+✅ Connected to MongoDB
+🧹 Starting periodic cleanup service...
+📁 Monitoring directory: C:\Picstar\PicStar_Server\uploads
+⏰ Max file age: 10 minutes
+🔄 Cleanup interval: 2 minutes
+🧹 Starting cleanup cycle...
+[2025-12-06T22:50:45.345Z] INFO: 🔔 Notification service started - generating notifications every 1 hour 
+📅 Account deletion cron job scheduled (runs daily at 2 AM)
 ⏱️ Server timeouts configured: {
   keepAliveTimeout: 65000,
   headersTimeout: 66000,
   requestTimeout: 120000
 }
-🚀 Server running in production mode on 0.0.0.0:10000
-🌐 Server URL: http://192.168.29.29:10000
-📁 Uploads directory: D:\Projects\Narayana_App\server\uploads
-🧹 Auto-cleanup: disabled
+🚀 Server running in development mode on 0.0.0.0:10000
+🌐 Server URL: http://192.168.1.76:10000
+📁 Uploads directory: C:\Picstar\PicStar_Server\uploads
+🧹 Auto-cleanup: enabled
 🌐 CORS enabled for: *
 📱 Accessible from any network interface
 💡 For mobile testing, use your network IP instead of localhost
+📁 No cleanup needed: 1 files, 0KB total
+[2025-12-06T22:50:45.716Z] INFO: 🔔 New notification generated: New congratulations Video! 
+🧹 Starting cleanup cycle...
+📁 No cleanup needed: 1 files, 0KB total
+🧹 Starting cleanup cycle...
+📁 No cleanup needed: 1 files, 0KB total

@@ -42,12 +42,45 @@ export const register = async (req, res) => {
       return res.status(400).json({ success: false, error: 'Provide a valid email or Indian phone' });
     }
 
-    // Check uniqueness
+    // Check if user exists
     const existing = await User.findOne({ $or: [emailNorm ? { email: emailNorm } : null, phoneNorm ? { phone: phoneNorm } : null].filter(Boolean) });
+
     if (existing) {
+      // Allow fresh signup for deleted accounts
+      if (existing.accountStatus === 'deleted') {
+        // Reset user document for fresh account
+        const passwordHash = await bcrypt.hash(String(password), config.auth.passwordSaltRounds);
+
+        existing.name = String(name).trim();
+        existing.email = emailNorm || undefined;
+        existing.phone = phoneNorm || undefined;
+        existing.passwordHash = passwordHash;
+        existing.accountStatus = 'active';
+        existing.deletionScheduledAt = null;
+        existing.subscription = { status: 'none', currentPeriodEnd: null, lastTransactionId: null, createdAt: null };
+        existing.profilePhotoUrl = null;
+        existing.isPhoneVerified = false;
+
+        await existing.save();
+
+        const token = sign(existing._id.toString());
+        console.log(`✅ Fresh account created for previously deleted user: ${phoneNorm || emailNorm}`);
+        return res.status(201).json({ success: true, data: { token, user: { id: existing._id, name: existing.name, email: existing.email, phone: existing.phone, profilePhotoUrl: existing.profilePhotoUrl } } });
+      }
+
+      // For pending accounts, suggest login to reactivate
+      if (existing.accountStatus === 'pending') {
+        return res.status(400).json({
+          success: false,
+          error: 'This account has a pending deletion request. Please login to reactivate your account.',
+        });
+      }
+
+      // Active account - already exists
       return res.status(409).json({ success: false, error: 'User already exists with provided email/phone' });
     }
 
+    // Create new user
     const passwordHash = await bcrypt.hash(String(password), config.auth.passwordSaltRounds);
 
     const user = await User.create({
@@ -86,6 +119,23 @@ export const login = async (req, res) => {
 
     const ok = await bcrypt.compare(String(password || ''), user.passwordHash);
     if (!ok) return res.status(401).json({ success: false, error: 'Invalid credentials' });
+
+    // Check account status
+    if (user.accountStatus === 'deleted') {
+      return res.status(403).json({
+        success: false,
+        error: 'Your account has been deleted. Please sign up again to create a new account.',
+        accountDeleted: true,
+      });
+    }
+
+    if (user.accountStatus === 'pending') {
+      // Reactivate account - cancel deletion
+      user.accountStatus = 'active';
+      user.deletionScheduledAt = null;
+      await user.save();
+      console.log(`✅ Account reactivated via login: ${user.phone || user.email}`);
+    }
 
     const token = sign(user._id.toString());
     return res.json({ success: true, data: { token, user: { id: user._id, name: user.name, email: user.email, phone: user.phone, profilePhotoUrl: user.profilePhotoUrl } } });
@@ -157,12 +207,37 @@ export const sendOtp = async (req, res) => {
     
     // Check if user already exists with this phone
     const existingUser = await User.findOne({ phone: phoneNorm });
-    
-    // For registration mode: reject if phone is already verified
-    if (mode === 'register' && existingUser && existingUser.isPhoneVerified) {
+
+    // Handle deleted accounts - allow fresh signup/signin
+    if (existingUser && existingUser.accountStatus === 'deleted') {
+      if (mode === 'signin') {
+        return res.status(403).json({
+          success: false,
+          error: 'Your account has been deleted. Please sign up again to create a new account.',
+          accountDeleted: true,
+        });
+      }
+      // For register mode with deleted account, allow OTP to proceed
+      // The account will be reset in verifyOtp
+    }
+
+    // Handle pending accounts - allow signin to reactivate
+    if (existingUser && existingUser.accountStatus === 'pending') {
+      if (mode === 'register') {
+        return res.status(400).json({
+          success: false,
+          error: 'This account has a pending deletion request. Please sign in to reactivate your account.',
+        });
+      }
+      // For signin mode with pending account, allow OTP to proceed
+      // The account will be reactivated in verifyOtp
+    }
+
+    // For registration mode: reject if phone is already verified and active
+    if (mode === 'register' && existingUser && existingUser.isPhoneVerified && existingUser.accountStatus === 'active') {
       return res.status(409).json({ success: false, error: 'Phone number already registered. Please sign in.' });
     }
-    
+
     // For signin mode: require that phone exists and is verified
     if (mode === 'signin') {
       if (!existingUser) {
@@ -250,6 +325,62 @@ export const verifyOtp = async (req, res) => {
       return res.status(401).json({ success: false, error: 'Invalid OTP' });
     }
     
+    // Check account status before completing login
+    if (user.accountStatus === 'deleted') {
+      return res.status(403).json({
+        success: false,
+        error: 'Your account has been deleted. Please sign up again to create a new account.',
+        accountDeleted: true,
+      });
+    }
+
+    if (user.accountStatus === 'pending') {
+      // Reactivate account - cancel deletion
+      user.accountStatus = 'active';
+      user.deletionScheduledAt = null;
+      console.log(`✅ Account reactivated via OTP login: ${user.phone}`);
+    }
+
+    // If account was deleted, reset it for fresh signup
+    if (user.accountStatus === 'deleted') {
+      user.name = userName;
+      user.accountStatus = 'active';
+      user.deletionScheduledAt = null;
+      user.subscription = { status: 'none', currentPeriodEnd: null, lastTransactionId: null, createdAt: null };
+      user.profilePhotoUrl = null;
+      user.isPhoneVerified = true;
+      user.otp = undefined;
+      user.otpExpiry = undefined;
+      user.otpSessionId = undefined;
+
+      const savedUser = await user.save();
+      const token = sign(savedUser._id.toString());
+      console.log(`✅ Fresh account created via OTP for previously deleted user: ${phoneNorm}`);
+
+      return res.status(200).json({
+        success: true,
+        message: 'Phone verified successfully - new account created',
+        token,
+        user: {
+          id: savedUser._id,
+          name: savedUser.name,
+          phone: savedUser.phone,
+          email: savedUser.email,
+          profilePhotoUrl: savedUser.profilePhotoUrl,
+        },
+        data: {
+          token,
+          user: {
+            id: savedUser._id,
+            name: savedUser.name,
+            phone: savedUser.phone,
+            email: savedUser.email,
+            profilePhotoUrl: savedUser.profilePhotoUrl,
+          },
+        },
+      });
+    }
+
     // OTP verified - mark as verified and clear OTP fields
     // Only update name if user is being created/registered (not already verified)
     // For existing users signing in, keep their original name
@@ -260,7 +391,7 @@ export const verifyOtp = async (req, res) => {
     user.otp = undefined;
     user.otpExpiry = undefined;
     user.otpSessionId = undefined;
-    
+
     const savedUser = await user.save();
 
     console.log('=== OTP VERIFIED - USER DATA ===');
