@@ -169,38 +169,95 @@ class VideoController {
       const normalizedMain = mainCategoryRaw ? String(mainCategoryRaw).toLowerCase().trim() : null;
       const normalizedSub = String(subcategoryInput).toLowerCase().trim();
 
-      // Parse optional axes from multipart fields (same as image upload)
-      let photoAxis = { x: 0, y: 0 };
-      let textAxis = { x: 0, y: 0 };
+      // Parse optional axes and sizes from multipart fields (same as image upload)
+      // Default sizes match app: photo 100x100 (square), text 120x50
+      // Photo constraints: min 60, max 200 (square)
+      // Text constraints: min 80x40, max 80%x60% of container
+      let photoAxis = { x: 0, y: 0, width: 100, height: 100 };
+      let textAxis = { x: 0, y: 0, width: 120, height: 50 };
       try {
         // Photo axis (JSON or flat fields)
         if (typeof req.body.photo_container_axis === 'string') {
           const parsed = JSON.parse(req.body.photo_container_axis);
           if (Number.isFinite(parsed.x) && Number.isFinite(parsed.y)) {
-            photoAxis = { x: Number(parsed.x), y: Number(parsed.y) };
+            photoAxis.x = Number(parsed.x);
+            photoAxis.y = Number(parsed.y);
           }
+          if (Number.isFinite(parsed.width)) photoAxis.width = Number(parsed.width);
+          if (Number.isFinite(parsed.height)) photoAxis.height = Number(parsed.height);
         } else if (req.body.photo_x !== undefined && req.body.photo_y !== undefined) {
           const x = Number(req.body.photo_x);
           const y = Number(req.body.photo_y);
           if (Number.isFinite(x) && Number.isFinite(y)) {
-            photoAxis = { x, y };
+            photoAxis.x = x;
+            photoAxis.y = y;
           }
         }
+        // Photo size (flat fields)
+        if (req.body.photo_w !== undefined) {
+          const w = Number(req.body.photo_w);
+          // Enforce app constraints: min 60, max 200
+          if (Number.isFinite(w)) {
+            photoAxis.width = Math.max(60, Math.min(200, w));
+            photoAxis.height = photoAxis.width; // Keep square
+          }
+        }
+        if (req.body.photo_h !== undefined) {
+          const h = Number(req.body.photo_h);
+          if (Number.isFinite(h)) {
+            photoAxis.height = Math.max(60, Math.min(200, h));
+            photoAxis.width = photoAxis.height; // Keep square
+          }
+        }
+
         // Text axis (JSON or flat fields)
         if (typeof req.body.text_container_axis === 'string') {
           const tParsed = JSON.parse(req.body.text_container_axis);
           if (Number.isFinite(tParsed.x) && Number.isFinite(tParsed.y)) {
-            textAxis = { x: Number(tParsed.x), y: Number(tParsed.y) };
+            textAxis.x = Number(tParsed.x);
+            textAxis.y = Number(tParsed.y);
           }
+          if (Number.isFinite(tParsed.width)) textAxis.width = Number(tParsed.width);
+          if (Number.isFinite(tParsed.height)) textAxis.height = Number(tParsed.height);
         } else if (req.body.text_x !== undefined && req.body.text_y !== undefined) {
           const tx = Number(req.body.text_x);
           const ty = Number(req.body.text_y);
           if (Number.isFinite(tx) && Number.isFinite(ty)) {
-            textAxis = { x: tx, y: ty };
+            textAxis.x = tx;
+            textAxis.y = ty;
+          }
+        }
+        // Text size (flat fields) - min 80x40 from app constraints
+        if (req.body.text_w !== undefined) {
+          const w = Number(req.body.text_w);
+          if (Number.isFinite(w)) {
+            textAxis.width = Math.max(80, w); // min 80
+          }
+        }
+        if (req.body.text_h !== undefined) {
+          const h = Number(req.body.text_h);
+          if (Number.isFinite(h)) {
+            textAxis.height = Math.max(40, h); // min 40
           }
         }
       } catch (e) {
         console.warn('Invalid axis provided, using defaults. Error:', e?.message || e);
+      }
+
+      // Parse reference dimensions (for pixel-perfect app scaling)
+      // Default: 270x480 (9:16 aspect ratio) - matches website editor
+      let coordRef = { width: 270, height: 480 };
+      try {
+        if (req.body.reference_w !== undefined) {
+          const w = Number(req.body.reference_w);
+          if (Number.isFinite(w) && w > 0) coordRef.width = w;
+        }
+        if (req.body.reference_h !== undefined) {
+          const h = Number(req.body.reference_h);
+          if (Number.isFinite(h) && h > 0) coordRef.height = h;
+        }
+      } catch (e) {
+        console.warn('Invalid reference dimensions, using defaults');
       }
 
       // Persist to MongoDB
@@ -212,6 +269,7 @@ class VideoController {
         subcategory: normalizedSub,
         photo_container_axis: photoAxis,
         text_container_axis: textAxis,
+        coordinate_reference: coordRef,
       });
 
       return res.status(201).json({
@@ -227,6 +285,7 @@ class VideoController {
           created_at: doc.created_at,
           photo_container_axis: doc.photo_container_axis,
           text_container_axis: doc.text_container_axis,
+          coordinate_reference: doc.coordinate_reference,
         }
       });
     } catch (error) {
