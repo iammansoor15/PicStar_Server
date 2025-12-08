@@ -8,7 +8,60 @@ import axios from 'axios';
 
 const execPromise = promisify(exec);
 
+// Standard output resolution for all videos (9:16 aspect ratio)
+const STANDARD_WIDTH = 1080;
+const STANDARD_HEIGHT = 1920;
+
 class VideoController {
+  // Standardize video to 1080x1920 resolution using FFmpeg
+  async standardizeVideoResolution(inputPath) {
+    console.log('📐 Standardizing video to 1080x1920...');
+
+    try {
+      // Get original video dimensions
+      const probeCmd = `ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=s=x:p=0 "${inputPath}"`;
+      const { stdout: probeOut } = await execPromise(probeCmd);
+      const [origW, origH] = probeOut.trim().split('x').map(Number);
+
+      console.log(`   Original: ${origW}x${origH}`);
+
+      // Check if already at standard resolution
+      if (origW === STANDARD_WIDTH && origH === STANDARD_HEIGHT) {
+        console.log('   ✅ Already at standard resolution');
+        return inputPath;
+      }
+
+      // Create output path
+      const ext = path.extname(inputPath);
+      const outputPath = inputPath.replace(ext, `_standardized${ext}`);
+
+      // Scale to 1080x1920, maintaining aspect ratio and padding if needed
+      // Using scale and pad to ensure exact 1080x1920 output
+      const ffmpegCmd = `ffmpeg -i "${inputPath}" -vf "scale=${STANDARD_WIDTH}:${STANDARD_HEIGHT}:force_original_aspect_ratio=decrease,pad=${STANDARD_WIDTH}:${STANDARD_HEIGHT}:(ow-iw)/2:(oh-ih)/2:black" -c:v libx264 -preset fast -crf 23 -c:a copy -y "${outputPath}"`;
+
+      console.log(`   Scaling to ${STANDARD_WIDTH}x${STANDARD_HEIGHT}...`);
+      await execPromise(ffmpegCmd);
+
+      // Verify output
+      if (!fs.existsSync(outputPath)) {
+        console.log('   ❌ Standardized file not created, using original');
+        return inputPath;
+      }
+
+      const origSize = fs.statSync(inputPath).size;
+      const newSize = fs.statSync(outputPath).size;
+      console.log(`   ✅ Standardized: ${(origSize/1024/1024).toFixed(2)}MB -> ${(newSize/1024/1024).toFixed(2)}MB`);
+
+      // Delete original, return standardized path
+      try { fs.unlinkSync(inputPath); } catch {}
+
+      return outputPath;
+    } catch (err) {
+      console.error('   ❌ Standardization failed:', err.message);
+      return inputPath;
+    }
+  }
+
   // Crop video using FFmpeg
   async cropVideoWithFFmpeg(inputPath, cropParams) {
     const { crop_x, crop_y, crop_w, crop_h, preview_w, preview_h } = cropParams;
@@ -150,6 +203,13 @@ class VideoController {
           console.error('❌ Video crop failed, using original:', cropErr.message);
           filePathToUpload = req.file.path;
         }
+      }
+
+      // Standardize video to 1080x1920 resolution
+      try {
+        filePathToUpload = await this.standardizeVideoResolution(filePathToUpload);
+      } catch (stdErr) {
+        console.error('❌ Video standardization failed, continuing with current:', stdErr.message);
       }
 
       // Upload video to Cloudinary
@@ -380,14 +440,15 @@ class VideoController {
       const probeCommand = `ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=s=x:p=0 "${inputPath}"`;
       const { stdout: probeOutput } = await execPromise(probeCommand);
       const [videoWidth, videoHeight] = probeOutput.trim().split('x').map(Number);
-      
+
       console.log(`   App dimensions: ${dimensions.width}x${dimensions.height}`);
       console.log(`   Video dimensions: ${videoWidth}x${videoHeight}`);
-      
-      // Calculate scaling factors
+
+      // Calculate scaling factors based on app dimensions to ACTUAL VIDEO dimensions
+      // This ensures device-independent scaling (phone vs tablet gives same output)
       const scaleX = videoWidth / dimensions.width;
       const scaleY = videoHeight / dimensions.height;
-      console.log(`   Scale factors: X=${scaleX.toFixed(3)}, Y=${scaleY.toFixed(3)}`);
+      console.log(`   Scale factors (to video): X=${scaleX.toFixed(3)}, Y=${scaleY.toFixed(3)}`);
 
       // Build FFmpeg filter complex
       const filters = [];
@@ -524,17 +585,18 @@ class VideoController {
         console.log(`   Adding ${overlays.texts.length} text overlay(s)`);
         const textFilters = overlays.texts.map((text, i) => {
           const escapedText = String(text.text).replace(/'/g, "\\\\\\\\'").replace(/:/g, '\\\\\\\\:');
-          // Scale coordinates, dimensions, and font size from app to video
+          // Scale coordinates from app screen to video dimensions
           const scaledX = Math.round(text.x * scaleX);
           const scaledY = Math.round(text.y * scaleY);
           const scaledWidth = Math.round((text.width || 120) * scaleX);
           const scaledHeight = Math.round((text.height || 40) * scaleY);
-          const scaledFontSize = Math.round(text.fontSize * scaleY);
-          
+          // Use HALF scale for fontSize - full scale makes text too large visually
+          const scaledFontSize = Math.round(text.fontSize * scaleY * 0.5);
+
           // Check if text should be bold
           const isBold = text.fontWeight === 'bold' || text.fontWeight === '700' || text.fontWeight === '800' || text.fontWeight === '900';
           const boldParam = isBold ? ':bold=1' : '';
-          
+
           console.log(`   Text ${i + 1}: "${text.text}" at (${text.x},${text.y}) size ${text.fontSize} weight=${text.fontWeight} bg=${text.backgroundColor} -> (${scaledX},${scaledY}) size ${scaledFontSize} bold=${isBold}`);
           
           // Build filter parts

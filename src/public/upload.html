@@ -442,22 +442,55 @@
         video.muted = true;
         video.src = url;
         video.onloadeddata = () => {
-          const capture = () => {
-            const canvas = document.createElement('canvas');
-            const w = video.videoWidth || 480, h = video.videoHeight || 852;
-            canvas.width = w; canvas.height = h;
-            const ctx = canvas.getContext('2d');
+          const w = video.videoWidth || 480, h = video.videoHeight || 852;
+          const canvas = document.createElement('canvas');
+          canvas.width = w; canvas.height = h;
+          const ctx = canvas.getContext('2d');
+
+          // Try multiple time points to find a non-black frame
+          const timePoints = [1, 2, 3, 0.5, 0];
+          let attemptIndex = 0;
+
+          const tryCapture = () => {
+            ctx.drawImage(video, 0, 0, w, h);
+            const imageData = ctx.getImageData(0, 0, Math.min(w, 100), Math.min(h, 100));
+            const pixels = imageData.data;
+
+            // Check if frame is mostly black (average brightness < 10)
+            let totalBrightness = 0;
+            for (let i = 0; i < pixels.length; i += 4) {
+              totalBrightness += (pixels[i] + pixels[i+1] + pixels[i+2]) / 3;
+            }
+            const avgBrightness = totalBrightness / (pixels.length / 4);
+
+            if (avgBrightness > 10 || attemptIndex >= timePoints.length - 1) {
+              // Found non-black frame or exhausted attempts
+              URL.revokeObjectURL(url);
+              try {
+                resolve({ dataUrl: canvas.toDataURL('image/jpeg', 0.85), width: w, height: h });
+              } catch (e) { reject(e); }
+            } else {
+              // Try next time point
+              attemptIndex++;
+              const nextTime = Math.min(timePoints[attemptIndex], (video.duration || 1) - 0.1);
+              video.currentTime = Math.max(0, nextTime);
+            }
+          };
+
+          video.onseeked = tryCapture;
+
+          // Start with first time point
+          const startTime = Math.min(timePoints[0], (video.duration || 1) - 0.1);
+          video.currentTime = Math.max(0, startTime);
+
+          // Fallback timeout
+          setTimeout(() => {
             ctx.drawImage(video, 0, 0, w, h);
             URL.revokeObjectURL(url);
             try {
               resolve({ dataUrl: canvas.toDataURL('image/jpeg', 0.85), width: w, height: h });
             } catch (e) { reject(e); }
-          };
-          // Try around 0.5s; if not seekable, fallback to 0
-          video.currentTime = Math.min(0.5, (video.duration || 1) - 0.1);
-          video.onseeked = capture;
-          // Fallback if seeked never fires
-          setTimeout(capture, 700);
+          }, 3000);
         };
         video.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Failed to load video for thumbnail')); };
       });
