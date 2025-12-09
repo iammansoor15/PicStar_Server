@@ -62,6 +62,40 @@ class VideoController {
     }
   }
 
+  // Detect actual content area (excluding black bars/letterboxing) using FFmpeg cropdetect
+  async detectContentArea(videoPath) {
+    try {
+      console.log('🔍 Detecting content area (black bar detection)...');
+      // Use cropdetect to find black bars - analyze first 1 second
+      const cmd = `ffmpeg -i "${videoPath}" -vf "cropdetect=24:16:0" -t 1 -f null - 2>&1`;
+      const { stderr } = await execPromise(cmd);
+      const output = stderr || '';
+
+      // Parse cropdetect output - looks for lines like: crop=1080:1620:0:150
+      const cropMatches = output.match(/crop=(\d+):(\d+):(\d+):(\d+)/g);
+      if (cropMatches && cropMatches.length > 0) {
+        // Get the last (most stable) crop detection
+        const lastCrop = cropMatches[cropMatches.length - 1];
+        const match = lastCrop.match(/crop=(\d+):(\d+):(\d+):(\d+)/);
+        if (match) {
+          const result = {
+            width: parseInt(match[1]),
+            height: parseInt(match[2]),
+            offsetX: parseInt(match[3]),
+            offsetY: parseInt(match[4])
+          };
+          console.log(`   ✅ Detected content: ${result.width}x${result.height} at offset (${result.offsetX}, ${result.offsetY})`);
+          return result;
+        }
+      }
+      console.log('   ℹ️ No letterboxing detected');
+      return null;
+    } catch (err) {
+      console.warn('   ⚠️ Could not detect content area:', err.message);
+      return null;
+    }
+  }
+
   // Crop video using FFmpeg
   async cropVideoWithFFmpeg(inputPath, cropParams) {
     const { crop_x, crop_y, crop_w, crop_h, preview_w, preview_h } = cropParams;
@@ -450,6 +484,16 @@ class VideoController {
       const scaleY = videoHeight / dimensions.height;
       console.log(`   Scale factors (to video): X=${scaleX.toFixed(3)}, Y=${scaleY.toFixed(3)}`);
 
+      // Detect actual content area (excluding black bars) using FFmpeg cropdetect
+      let contentOffsetX = 0;
+      let contentOffsetY = 0;
+      const contentArea = await this.detectContentArea(inputPath);
+      if (contentArea) {
+        contentOffsetX = contentArea.offsetX;
+        contentOffsetY = contentArea.offsetY;
+      }
+      console.log(`   Content offset: X=${contentOffsetX}, Y=${contentOffsetY}`);
+
       // Build FFmpeg filter complex
       const filters = [];
       const inputs = [`-i "${inputPath}"`];
@@ -542,14 +586,14 @@ class VideoController {
       }
       photoInputs.forEach((photo, i) => {
         const outputName = i === photoInputs.length - 1 ? 'out' : `tmp${i}`;
-        // Scale coordinates and dimensions from app to video
-        const scaledX = Math.round(photo.x * scaleX);
-        const scaledY = Math.round(photo.y * scaleY);
+        // Scale coordinates and dimensions from app to video, adding content offset for letterboxing
+        const scaledX = Math.round(photo.x * scaleX) + contentOffsetX;
+        const scaledY = Math.round(photo.y * scaleY) + contentOffsetY;
         const scaledWidth = Math.round(photo.width * scaleX);
         const scaledHeight = Math.round(photo.height * scaleY);
-        
+
         console.log(`   Photo ${i + 1}: (${photo.x},${photo.y}) ${photo.width}x${photo.height} -> (${scaledX},${scaledY}) ${scaledWidth}x${scaledHeight}`);
-        
+
         filters.push(
           `[${photo.index}:v]scale=${scaledWidth}:${scaledHeight}[scaled${i}]`,
           `${previousOutput}[scaled${i}]overlay=${scaledX}:${scaledY}[${outputName}]`
@@ -560,8 +604,8 @@ class VideoController {
       // Overlay banner (at the top of the video)
       if (bannerInput) {
         console.log(`   Adding banner overlay`);
-        const scaledBannerX = Math.round(bannerInput.x * scaleX);
-        const scaledBannerY = Math.round(bannerInput.y * scaleY);
+        const scaledBannerX = Math.round(bannerInput.x * scaleX) + contentOffsetX;
+        const scaledBannerY = Math.round(bannerInput.y * scaleY) + contentOffsetY;
         const scaledBannerWidth = Math.round(bannerInput.width * scaleX);
         const scaledBannerHeight = Math.round(bannerInput.height * scaleY);
 
@@ -585,13 +629,13 @@ class VideoController {
         console.log(`   Adding ${overlays.texts.length} text overlay(s)`);
         const textFilters = overlays.texts.map((text, i) => {
           const escapedText = String(text.text).replace(/'/g, "\\\\\\\\'").replace(/:/g, '\\\\\\\\:');
-          // Scale coordinates from app screen to video dimensions
-          const scaledX = Math.round(text.x * scaleX);
-          const scaledY = Math.round(text.y * scaleY);
+          // Scale coordinates from app screen to video dimensions, adding content offset for letterboxing
+          const scaledX = Math.round(text.x * scaleX) + contentOffsetX;
+          const scaledY = Math.round(text.y * scaleY) + contentOffsetY;
           const scaledWidth = Math.round((text.width || 120) * scaleX);
           const scaledHeight = Math.round((text.height || 40) * scaleY);
-          // Use HALF scale for fontSize - full scale makes text too large visually
-          const scaledFontSize = Math.round(text.fontSize * scaleY * 0.5);
+          // Scale fontSize proportionally to video resolution
+          const scaledFontSize = Math.round(text.fontSize * scaleY);
 
           // Check if text should be bold
           const isBold = text.fontWeight === 'bold' || text.fontWeight === '700' || text.fontWeight === '800' || text.fontWeight === '900';

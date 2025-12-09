@@ -1,4 +1,4 @@
-echo "# Node modules
+# Node modules
 node_modules/
 npm-debug.log*
 yarn-debug.log*
@@ -45,4 +45,11 @@ Thumbs.db
 # Misc
 .env
 .expo
-.expo-shared" > .gitignore
+.expo-shared
+
+# Temp files from video processing
+uploads/temp/
+input_*.mp4
+output_*.mp4
+photo_*.jpg
+banner_*.png
