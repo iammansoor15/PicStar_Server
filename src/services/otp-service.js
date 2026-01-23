@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_KEY = '05d5c663-bb62-11f0-bdde-0200cd936042';
+const API_KEY = 'd1f86e87-f560-11f0-a6b2-0200cd936042';
 const BASE_URL = 'https://2factor.in/API/V1';
 
 /**
