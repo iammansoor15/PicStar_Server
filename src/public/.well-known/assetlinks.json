@@ -1,0 +1,15 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls",
+      "delegate_permission/common.get_login_creds"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.codebinary.winter",
+      "sha256_cert_fingerprints": [
+        "FE:8B:66:4D:DC:B2:92:40:23:6B:EF:BA:03:F9:D7:9D:37:E2:C5:91:FE:82:AA:2B:7F:2D:6A:6C:A7:42:5D:B7"
+      ]
+    }
+  }
+]
