@@ -1,4 +1,4 @@
-import cloudinary from '../utils/cloudinary.js';
+import minio from '../utils/minio.js';
 import fs from 'fs';
 import path from 'path';
 import { promisify } from 'util';
@@ -6,6 +6,9 @@ import { exec } from 'child_process';
 import Template from '../models/Template.js';
 
 const execPromise = promisify(exec);
+
+// Protected categories that require admin key to upload
+const PROTECTED_CATEGORIES = ['banners'];
 
 // Crop image using FFmpeg
 async function cropImageWithFFmpeg(inputPath, cropParams) {
@@ -94,21 +97,18 @@ async function cropImageWithFFmpeg(inputPath, cropParams) {
 }
 
 
-// Best-effort derive Cloudinary public_id from a secure_url
-function derivePublicIdFromUrl(url) {
+// Extract MinIO object name from URL
+function deriveObjectNameFromUrl(url) {
   try {
     const u = new URL(url);
-    const parts = u.pathname.split('/').filter(Boolean);
-    const idx = parts.indexOf('upload');
-    if (idx === -1) return null;
-    let start = idx + 1;
-    if (parts[start] && /^v\d+$/.test(parts[start])) start++;
-    const pathParts = parts.slice(start);
-    if (pathParts.length === 0) return null;
-    const last = pathParts[pathParts.length - 1];
-    const dot = last.lastIndexOf('.');
-    pathParts[pathParts.length - 1] = dot > 0 ? last.substring(0, dot) : last;
-    return pathParts.join('/');
+    // Remove bucket prefix from pathname
+    const pathname = u.pathname;
+    const parts = pathname.split('/').filter(Boolean);
+    // First part is bucket name, rest is object path
+    if (parts.length > 1) {
+      return parts.slice(1).join('/');
+    }
+    return null;
   } catch {
     return null;
   }
@@ -123,6 +123,19 @@ class TemplateController {
       if (!subcategoryInput) {
         return res.status(400).json({ success: false, error: 'Subcategory is required' });
       }
+
+      // Check if uploading to a protected category (requires admin key)
+      const normalizedSubForCheck = String(subcategoryInput).toLowerCase().trim();
+      if (PROTECTED_CATEGORIES.includes(normalizedSubForCheck)) {
+        const adminKey = req.body.admin_key || req.headers['x-admin-key'];
+        if (!adminKey || adminKey !== process.env.ADMIN_UPLOAD_KEY) {
+          return res.status(403).json({
+            success: false,
+            error: 'Unauthorized: Admin access required for this category'
+          });
+        }
+      }
+
       // Optional main/sub categories (keep parsing for consistency)
       const mainCategoryRaw = typeof req.body.religion === 'string' ? req.body.religion : (typeof req.body.main_category === 'string' ? req.body.main_category : null);
       const subCategoryRaw = typeof req.body.subcategory === 'string' ? req.body.subcategory : (typeof req.body.sub_category === 'string' ? req.body.sub_category : null);
@@ -130,7 +143,7 @@ class TemplateController {
         return res.status(400).json({ success: false, error: 'No image file provided' });
       }
 
-      console.log('📤 Uploading image to Cloudinary...', {
+      console.log('📤 Uploading image to MinIO...', {
         subcategory: subcategoryInput,
         filename: req.file.originalname,
         size: req.file.size
@@ -175,22 +188,14 @@ class TemplateController {
         }
       }
 
-      // Upload to Cloudinary (skip auto-crop transformation if we already cropped)
-      const uploadOptions = {
-        folder: `narayana_templates/${String(subcategoryInput).toLowerCase().trim()}`,
-        resource_type: 'image',
-      };
+      // Upload to MinIO
+      const folder = `narayana_templates/${String(subcategoryInput).toLowerCase().trim()}`;
 
-      // Only apply auto-crop if we didn't manually crop
-      if (!hasCrop) {
-        uploadOptions.transformation = [{ aspect_ratio: '9:16', crop: 'fill', gravity: 'auto', quality: 'auto', fetch_format: 'auto' }];
-      } else {
-        uploadOptions.transformation = [{ quality: 'auto', fetch_format: 'auto' }];
-      }
+      const uploadResult = await minio.uploadFile(filePathToUpload, folder, {
+        contentType: req.file.mimetype || 'image/png',
+      });
 
-      const uploadResult = await cloudinary.uploader.upload(filePathToUpload, uploadOptions);
-
-      console.log('✅ Image uploaded to Cloudinary:', uploadResult.secure_url);
+      console.log('✅ Image uploaded to MinIO:', uploadResult.secure_url);
 
       // Clean up temporary file(s)
       try {
@@ -626,11 +631,12 @@ class TemplateController {
       // Get distinct subcategories from templates collection
       const subcategories = await Template.distinct('subcategory');
 
-      // Filter out null/empty values and normalize
+      // Filter out null/empty values, normalize, and exclude protected categories
       const validSubcategories = subcategories
         .filter(s => s && typeof s === 'string' && s.trim())
         .map(s => s.toLowerCase().trim())
         .filter((v, i, arr) => arr.indexOf(v) === i) // unique
+        .filter(s => !PROTECTED_CATEGORIES.includes(s)) // exclude protected categories
         .sort();
 
       // Format as category objects with key and label (no icons)
@@ -663,15 +669,15 @@ class TemplateController {
       const doc = await Template.findById(id).lean();
       if (!doc) return res.status(404).json({ success: false, error: 'Template not found' });
 
-      // Attempt Cloudinary deletion (best-effort)
+      // Attempt MinIO deletion (best-effort)
       try {
         const url = doc.image_url || doc.video_url || '';
-        const publicId = derivePublicIdFromUrl(url);
-        if (publicId) {
-          await cloudinary.api.delete_resources([publicId]);
+        const objectName = deriveObjectNameFromUrl(url);
+        if (objectName) {
+          await minio.deleteObject(objectName);
         }
       } catch (e) {
-        console.warn('Cloudinary delete failed (continuing):', e?.message || e);
+        console.warn('MinIO delete failed (continuing):', e?.message || e);
       }
 
       await Template.findByIdAndDelete(id);

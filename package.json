@@ -7,7 +7,8 @@
   "scripts": {
     "start": "node src/app.js",
     "dev": "node src/app.js",
-    "migrate-templates": "node src/scripts/migrate-templates.js"
+    "migrate-templates": "node src/scripts/migrate-templates.js",
+    "migrate-cloudinary-to-minio": "node src/scripts/migrate-cloudinary-to-minio.js"
   },
   "author": "",
   "license": "ISC",
@@ -15,7 +16,7 @@
   "dependencies": {
     "axios": "^1.13.2",
     "bcrypt": "^6.0.0",
-    "cloudinary": "^2.7.0",
+    "minio": "^8.0.2",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^5.1.0",

@@ -71,11 +71,13 @@ const config = {
         level: process.env.LOG_LEVEL || 'info',
         file: process.env.LOG_FILE || 'logs/server.log',
     },
-    cloudinary: {
-        // Only for template management, NOT background removal
-        cloudName: process.env.CLOUDINARY_CLOUD_NAME,
-        apiKey: process.env.CLOUDINARY_API_KEY,
-        apiSecret: process.env.CLOUDINARY_API_SECRET,
+    minio: {
+        endpoint: process.env.MINIO_ENDPOINT,
+        port: parseInt(process.env.MINIO_PORT) || 9000,
+        useSSL: process.env.MINIO_USE_SSL === 'true',
+        accessKey: process.env.MINIO_ACCESS_KEY,
+        secretKey: process.env.MINIO_SECRET_KEY,
+        bucket: process.env.MINIO_BUCKET || 'picstar',
     },
     razorpay: {
         keyId: process.env.RAZORPAY_KEY_ID,

@@ -1,5 +1,4 @@
-import cloudinary from '../utils/cloudinary.js';
-import streamifier from 'streamifier';
+import minio from '../utils/minio.js';
 import User from '../models/User.js';
 import sharp from 'sharp';
 import config from '../config/config.js';
@@ -73,38 +72,32 @@ const finalizePng = async (buffer) => {
 };
 
 /**
- * Upload profile photo to Cloudinary
+ * Upload profile photo to MinIO
  * @param {Buffer} fileBuffer - Image file buffer
  * @param {string} userId - User ID for folder organization
- * @returns {Promise<string>} - Cloudinary URL
+ * @returns {Promise<string>} - MinIO URL
  */
-const uploadToCloudinary = (fileBuffer, userId) => {
-  return new Promise((resolve, reject) => {
-    console.log('   Uploading to Cloudinary...');
-    const uploadStream = cloudinary.uploader.upload_stream(
-      {
-        folder: `profile_photos/${userId}`,
-        transformation: [
-          { width: 500, height: 500, crop: 'fill', gravity: 'face' },
-          { quality: 'auto:good' },
-          { fetch_format: 'auto' }
-        ],
-        overwrite: true,
-        invalidate: true,
-      },
-      (error, result) => {
-        if (error) {
-          console.error('   ❌ Cloudinary upload error:', error);
-          reject(error);
-        } else {
-          console.log(`   ✅ Uploaded to Cloudinary: ${result.secure_url}`);
-          resolve(result.secure_url);
-        }
-      }
-    );
+const uploadToMinio = async (fileBuffer, userId) => {
+  try {
+    console.log('   Uploading to MinIO...');
 
-    streamifier.createReadStream(fileBuffer).pipe(uploadStream);
-  });
+    // Resize to 500x500 for profile photos
+    const resizedBuffer = await sharp(fileBuffer)
+      .resize(500, 500, { fit: 'cover', position: 'centre' })
+      .png({ quality: 90 })
+      .toBuffer();
+
+    const result = await minio.uploadBuffer(resizedBuffer, `profile_photos/${userId}`, {
+      extension: '.png',
+      contentType: 'image/png',
+    });
+
+    console.log(`   ✅ Uploaded to MinIO: ${result.secure_url}`);
+    return result.secure_url;
+  } catch (error) {
+    console.error('   ❌ MinIO upload error:', error);
+    throw error;
+  }
 };
 
 /**
@@ -158,10 +151,10 @@ export const uploadProfilePhoto = async (req, res) => {
     // Step 3: Finalize PNG
     const finalBuffer = await finalizePng(noBgBuffer);
     
-    console.log('🔄 Step 4: Upload to Cloudinary');
-    
-    // Step 4: Upload to Cloudinary
-    const profilePhotoUrl = await uploadToCloudinary(finalBuffer, userId);
+    console.log('🔄 Step 4: Upload to MinIO');
+
+    // Step 4: Upload to MinIO
+    const profilePhotoUrl = await uploadToMinio(finalBuffer, userId);
 
     console.log('🔄 Step 5: Save to MongoDB');
     console.log(`   Profile photo URL: ${profilePhotoUrl}`);
@@ -185,7 +178,7 @@ export const uploadProfilePhoto = async (req, res) => {
     console.log(`   👤 User: ${user.name} (${userId})`);
     console.log(`   🖼️  Original size: ${req.file.size} bytes`);
     console.log(`   🎨 Final size: ${finalBuffer.length} bytes`);
-    console.log(`   🔗 Cloudinary URL: ${profilePhotoUrl}`);
+    console.log(`   🔗 MinIO URL: ${profilePhotoUrl}`);
     console.log(`   💾 Saved to MongoDB: profilePhotoUrl field updated`);
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
@@ -275,18 +268,17 @@ export const deleteProfilePhoto = async (req, res) => {
       });
     }
 
-    // Delete from Cloudinary if exists
+    // Delete from MinIO if exists
     if (user.profilePhotoUrl) {
       try {
-        // Extract public_id from URL
-        const urlParts = user.profilePhotoUrl.split('/');
-        const filename = urlParts[urlParts.length - 1].split('.')[0];
-        const publicId = `profile_photos/${userId}/${filename}`;
-        
-        await cloudinary.uploader.destroy(publicId);
-        console.log(`🗑️ Deleted photo from Cloudinary: ${publicId}`);
-      } catch (cloudinaryError) {
-        console.warn('⚠️ Could not delete from Cloudinary:', cloudinaryError.message);
+        // Extract object name from URL
+        const url = new URL(user.profilePhotoUrl);
+        const objectName = url.pathname.replace(`/${minio.bucket}/`, '');
+
+        await minio.deleteObject(objectName);
+        console.log(`🗑️ Deleted photo from MinIO: ${objectName}`);
+      } catch (minioError) {
+        console.warn('⚠️ Could not delete from MinIO:', minioError.message);
       }
     }
 

@@ -1,4 +1,4 @@
-import cloudinary from '../utils/cloudinary.js';
+import minio from '../utils/minio.js';
 import fs from 'fs';
 import path from 'path';
 import { promisify } from 'util';
@@ -165,23 +165,24 @@ class VideoController {
         return res.status(400).json({ success: false, error: 'Photo data is required' });
       }
       
-      console.log(`📷 [${requestId}] Uploading photo to Cloudinary...`);
+      console.log(`📷 [${requestId}] Uploading photo to MinIO...`);
       console.log(`   Size: ${(photo.length / 1024).toFixed(2)} KB`);
       console.log(`   Type: ${mimeType}`);
-      
-      // Upload to Cloudinary
-      const uploadResult = await cloudinary.uploader.upload(
-        `data:${mimeType || 'image/jpeg'};base64,${photo}`,
-        {
-          folder: 'narayana_templates/temp_overlays',
-          resource_type: 'image',
-        }
-      );
-      
+
+      // Convert base64 to buffer
+      const buffer = Buffer.from(photo, 'base64');
+
+      // Upload to MinIO
+      const ext = mimeType === 'image/png' ? '.png' : '.jpg';
+      const uploadResult = await minio.uploadBuffer(buffer, 'narayana_templates/temp_overlays', {
+        extension: ext,
+        contentType: mimeType || 'image/jpeg',
+      });
+
       const uploadTime = Date.now() - startTime;
       console.log(`✅ [${requestId}] Photo uploaded in ${uploadTime}ms`);
       console.log(`   URL: ${uploadResult.secure_url}`);
-      
+
       return res.status(200).json({
         success: true,
         url: uploadResult.secure_url,
@@ -246,13 +247,12 @@ class VideoController {
         console.error('❌ Video standardization failed, continuing with current:', stdErr.message);
       }
 
-      // Upload video to Cloudinary
-      const uploadResult = await cloudinary.uploader.upload(filePathToUpload, {
-        folder: `narayana_templates/${String(subcategoryInput).toLowerCase().trim()}`,
-        resource_type: 'video',
+      // Upload video to MinIO
+      const uploadResult = await minio.uploadFile(filePathToUpload, `narayana_templates/${String(subcategoryInput).toLowerCase().trim()}`, {
+        contentType: 'video/mp4',
       });
 
-      console.log('✅ Video uploaded to Cloudinary:', uploadResult.secure_url);
+      console.log('✅ Video uploaded to MinIO:', uploadResult.secure_url);
 
       // Cleanup temp file(s)
       try { fs.unlinkSync(filePathToUpload); } catch (e) { /* ignore */ }
@@ -701,17 +701,16 @@ class VideoController {
       console.log(`✅ [${requestId}] FFmpeg processing complete in ${ffmpegTime}ms`);
       console.log(`   Output size: ${(outputSize / 1024 / 1024).toFixed(2)} MB`);
 
-      // Upload processed video to Cloudinary
-      console.log(`\n📤 [${requestId}] Uploading to Cloudinary...`);
+      // Upload processed video to MinIO
+      console.log(`\n📤 [${requestId}] Uploading to MinIO...`);
       const uploadStart = Date.now();
-      
-      const uploadResult = await cloudinary.uploader.upload(outputPath, {
-        folder: 'narayana_templates/composited',
-        resource_type: 'video',
+
+      const uploadResult = await minio.uploadFile(outputPath, 'narayana_templates/composited', {
+        contentType: 'video/mp4',
       });
 
       const uploadTime = Date.now() - uploadStart;
-      console.log(`✅ [${requestId}] Video uploaded to Cloudinary in ${uploadTime}ms`);
+      console.log(`✅ [${requestId}] Video uploaded to MinIO in ${uploadTime}ms`);
       console.log(`   URL: ${uploadResult.secure_url}`);
 
       // Cleanup temp files

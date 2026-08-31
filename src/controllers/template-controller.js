@@ -1,58 +1,69 @@
-import cloud from '../utils/cloudinary.js';
+import minio from '../utils/minio.js';
 import streamifier from 'streamifier';
 
 class TemplateController {
   TEMPLATE_FOLDER_PREFIX = "narayana_templates";
 
-  // 🔹 Sanitize category string (safe for folder names)
+  // Sanitize category string (safe for folder names)
   sanitizeCategory(category) {
     return category.replace(/[^a-zA-Z0-9-_]/g, "");
   }
 
-  // 🔹 Extract category from Cloudinary public_id
-  extractCategory(publicId) {
-    const parts = publicId.split("/");
-    // Example: narayana_templates/congratulations/abcd1234
+  // Extract category from object name
+  extractCategory(objectName) {
+    const parts = objectName.split("/");
+    // Example: narayana_templates/congratulations/abcd1234.png
     if (parts.length >= 3 && parts[0] === this.TEMPLATE_FOLDER_PREFIX) {
       return parts[1];
     }
     return null;
   }
 
-  // 🔹 Extract unique template ID (last part of public_id)
-  extractTemplateId(publicId) {
-    const parts = publicId.split("/");
-    return parts.length > 0 ? parts[parts.length - 1] : null;
+  // Extract unique template ID (filename without extension)
+  extractTemplateId(objectName) {
+    const parts = objectName.split("/");
+    if (parts.length > 0) {
+      const filename = parts[parts.length - 1];
+      return filename.split('.')[0];
+    }
+    return null;
+  }
+
+  // Get file format from object name
+  getFormat(objectName) {
+    const ext = objectName.split('.').pop();
+    return ext || 'unknown';
   }
 
   // ===============================
-  // 📌 Fetch all templates
+  // Fetch all templates
   // ===============================
   async getAllTemplates(req, res) {
     try {
       const pageNum = parseInt(req.query.page) || 1;
       const limitNum = parseInt(req.query.limit) || 10;
-      const sortField = req.query.sortField || "created_at";
-      const sortOrder = req.query.sortOrder || "desc";
+      const offset = (pageNum - 1) * limitNum;
 
-const result = await cloud.search
-        .expression(`folder:${this.TEMPLATE_FOLDER_PREFIX}/*`)
-        .sort_by(sortField, sortOrder)
-        .max_results(limitNum)
-        .next_cursor(req.query.next_cursor || undefined)
-        .execute();
+      const objects = await minio.listObjects(`${this.TEMPLATE_FOLDER_PREFIX}/`);
 
-      const templates = result.resources.map(r => ({
-        id: this.extractTemplateId(r.public_id),
-        category: this.extractCategory(r.public_id),
-        url: r.secure_url,
-        public_id: r.public_id,
-        format: r.format,
-        created_at: r.created_at,
-        width: r.width,
-        height: r.height,
-        tags: r.tags,
-        context: r.context
+      // Sort by lastModified descending
+      objects.sort((a, b) => new Date(b.lastModified) - new Date(a.lastModified));
+
+      // Paginate
+      const paginatedObjects = objects.slice(offset, offset + limitNum);
+
+      const templates = await Promise.all(paginatedObjects.map(async obj => {
+        const url = await minio.getPublicUrl(obj.name);
+        return {
+          id: this.extractTemplateId(obj.name),
+          category: this.extractCategory(obj.name),
+          url,
+          secure_url: url,
+          public_id: obj.name,
+          format: this.getFormat(obj.name),
+          created_at: obj.lastModified,
+          size: obj.size,
+        };
       }));
 
       res.json({
@@ -60,9 +71,9 @@ const result = await cloud.search
         pagination: {
           current_page: pageNum,
           per_page: limitNum,
-          total_count: result.total_count || templates.length,
-          has_next_page: !!result.next_cursor,
-          next_cursor: result.next_cursor || null
+          total_count: objects.length,
+          has_next_page: offset + limitNum < objects.length,
+          next_cursor: offset + limitNum < objects.length ? String(pageNum + 1) : null
         }
       });
     } catch (err) {
@@ -72,59 +83,39 @@ const result = await cloud.search
   }
 
   // ===============================
-  // 📌 Fetch templates by category
+  // Fetch templates by category
   // ===============================
   async getTemplatesByCategory(req, res) {
     try {
       const category = req.params.category;
       const safeCategory = this.sanitizeCategory(category);
-      const folder = `${this.TEMPLATE_FOLDER_PREFIX}/${safeCategory}`;
+      const folder = `${this.TEMPLATE_FOLDER_PREFIX}/${safeCategory}/`;
 
       const pageNum = parseInt(req.query.page) || 1;
       const limitNum = parseInt(req.query.limit) || 10;
-      const sortField = req.query.sort_by || req.query.sortField || "created_at";
-      const sortOrder = req.query.order || req.query.sortOrder || "desc";
+      const offset = (pageNum - 1) * limitNum;
 
-      const searchExpressions = [
-        `folder:\"${folder}\"`,
-        `public_id:${folder}/*`,
-        `tags=${safeCategory}`,
-        `context=${safeCategory}`
-      ];
+      const objects = await minio.listObjects(folder);
 
-      let result;
-      let templates = [];
+      // Sort by lastModified descending
+      objects.sort((a, b) => new Date(b.lastModified) - new Date(a.lastModified));
 
-      for (const expr of searchExpressions) {
-        try {
-result = await cloud.search
-            .expression(expr)
-            .sort_by(sortField, sortOrder)
-            .max_results(limitNum)
-            .next_cursor(req.query.next_cursor || undefined)
-            .execute();
+      // Paginate
+      const paginatedObjects = objects.slice(offset, offset + limitNum);
 
-          if (result.resources && result.resources.length > 0) {
-            templates = result.resources.map(r => ({
-              id: this.extractTemplateId(r.public_id),
-              category: safeCategory,
-              secure_url: r.secure_url,
-              url: r.secure_url,
-              public_id: r.public_id,
-              format: r.format,
-              created_at: r.created_at,
-              width: r.width,
-              height: r.height,
-              tags: r.tags,
-              context: r.context
-            }));
-            break;
-          }
-        } catch (err) {
-          console.warn(`Search failed for expression: ${expr}`, err.message);
-          continue;
-        }
-      }
+      const templates = await Promise.all(paginatedObjects.map(async obj => {
+        const url = await minio.getPublicUrl(obj.name);
+        return {
+          id: this.extractTemplateId(obj.name),
+          category: safeCategory,
+          url,
+          secure_url: url,
+          public_id: obj.name,
+          format: this.getFormat(obj.name),
+          created_at: obj.lastModified,
+          size: obj.size,
+        };
+      }));
 
       return res.json({
         success: true,
@@ -134,9 +125,9 @@ result = await cloud.search
           pagination: {
             current_page: pageNum,
             per_page: limitNum,
-            total_count: result?.total_count || templates.length,
-            has_next_page: !!result?.next_cursor,
-            next_cursor: result?.next_cursor || null
+            total_count: objects.length,
+            has_next_page: offset + limitNum < objects.length,
+            next_cursor: offset + limitNum < objects.length ? String(pageNum + 1) : null
           }
         }
       });
@@ -147,7 +138,7 @@ result = await cloud.search
   }
 
   // ===============================
-  // 📌 Upload new template
+  // Upload new template
   // ===============================
   async uploadTemplate(req, res) {
     try {
@@ -162,47 +153,33 @@ result = await cloud.search
 
       const folder = `${this.TEMPLATE_FOLDER_PREFIX}/${category}`;
       const originalFilename = req.file.originalname.replace(/\.[^/.]+$/, "");
-
-      const uploadOptions = {
-        folder,
-        public_id: originalFilename,
-        resource_type: "image",
-        overwrite: true,
-        use_filename: true,
-        unique_filename: true,
-        tags: [category],
-        context: { category }
-      };
+      const ext = req.file.originalname.match(/\.[^/.]+$/)?.[0] || '.png';
 
       let uploadResult;
       if (req.file.buffer) {
-        uploadResult = await new Promise((resolve, reject) => {
-const uploadStream = cloud.uploader.upload_stream(uploadOptions, (err, result) => {
-            if (err) return reject(err);
-            resolve(result);
-          });
-          streamifier.createReadStream(req.file.buffer).pipe(uploadStream);
+        uploadResult = await minio.uploadBuffer(req.file.buffer, folder, {
+          filename: `${originalFilename}${ext}`,
+          contentType: req.file.mimetype || 'image/png',
         });
       } else {
-uploadResult = await cloud.uploader.upload(req.file.path, uploadOptions);
+        uploadResult = await minio.uploadFile(req.file.path, folder, {
+          filename: `${originalFilename}${ext}`,
+          contentType: req.file.mimetype || 'image/png',
+        });
       }
-
 
       return res.json({
         success: true,
         data: {
           template: {
-            id: this.extractTemplateId(uploadResult.public_id),
+            id: this.extractTemplateId(uploadResult.objectName),
             category,
             secure_url: uploadResult.secure_url,
-            url: uploadResult.secure_url,
-            public_id: uploadResult.public_id,
-            format: uploadResult.format,
-            created_at: uploadResult.created_at,
-            width: uploadResult.width,
-            height: uploadResult.height,
-            tags: uploadResult.tags,
-            context: uploadResult.context
+            url: uploadResult.url,
+            public_id: uploadResult.objectName,
+            format: this.getFormat(uploadResult.objectName),
+            created_at: new Date().toISOString(),
+            size: uploadResult.size,
           }
         }
       });
@@ -213,15 +190,14 @@ uploadResult = await cloud.uploader.upload(req.file.path, uploadOptions);
   }
 
   // ===============================
-  // 📌 Get template categories (subfolders of prefix)
+  // Get template categories (subfolders of prefix)
   // ===============================
   async getTemplateCategories(req, res) {
     try {
-      const folder = this.TEMPLATE_FOLDER_PREFIX;
-const result = await cloud.api.sub_folders(folder);
-      const categories = (result.folders || []).map(f => ({
-        key: f.name,
-        label: f.name,
+      const folders = await minio.listFolders(`${this.TEMPLATE_FOLDER_PREFIX}/`);
+      const categories = folders.map(f => ({
+        key: f,
+        label: f,
       }));
       return res.json({ success: true, data: { categories } });
     } catch (err) {
@@ -231,7 +207,7 @@ const result = await cloud.api.sub_folders(folder);
   }
 
   // ===============================
-  // 📌 Batch upload templates
+  // Batch upload templates
   // ===============================
   async batchUploadTemplates(req, res) {
     try {
@@ -241,49 +217,43 @@ const result = await cloud.api.sub_folders(folder);
       if (!files.length) {
         return res.status(400).json({ success: false, error: 'No files uploaded' });
       }
-      const uploadOne = (file) => new Promise((resolve) => {
-        const uploadOptions = {
-          folder,
-          resource_type: 'image',
-          overwrite: true,
-          use_filename: true,
-          unique_filename: true,
-          tags: [category],
-          context: { category },
-        };
-        const done = (err, result) => {
-          if (err) {
-            return resolve({ success: false, error: err.message });
+
+      const uploadOne = async (file) => {
+        try {
+          const ext = file.originalname.match(/\.[^/.]+$/)?.[0] || '.png';
+          let uploadResult;
+
+          if (file.buffer) {
+            uploadResult = await minio.uploadBuffer(file.buffer, folder, {
+              extension: ext,
+              contentType: file.mimetype || 'image/png',
+            });
+          } else {
+            uploadResult = await minio.uploadFile(file.path, folder, {
+              contentType: file.mimetype || 'image/png',
+            });
           }
-          resolve({
+
+          return {
             success: true,
             template: {
-              id: this.extractTemplateId(result.public_id),
+              id: this.extractTemplateId(uploadResult.objectName),
               category,
-              secure_url: result.secure_url,
-              url: result.secure_url,
-              public_id: result.public_id,
-              format: result.format,
-              created_at: result.created_at,
-              width: result.width,
-              height: result.height,
-              tags: result.tags,
-              context: result.context,
+              secure_url: uploadResult.secure_url,
+              url: uploadResult.url,
+              public_id: uploadResult.objectName,
+              format: this.getFormat(uploadResult.objectName),
+              created_at: new Date().toISOString(),
+              size: uploadResult.size,
             }
-          });
-        };
-        if (file.buffer) {
-const uploadStream = cloud.uploader.upload_stream(uploadOptions, done);
-          streamifier.createReadStream(file.buffer).pipe(uploadStream);
-        } else {
-cloud.uploader.upload(file.path, uploadOptions).then(r => done(null, r)).catch(e => done(e));
+          };
+        } catch (err) {
+          return { success: false, error: err.message };
         }
-      });
+      };
 
       const results = [];
       for (const f of files) {
-        // sequential to avoid rate limits; can be parallel if desired
-        // eslint-disable-next-line no-await-in-loop
         results.push(await uploadOne(f));
       }
 
@@ -295,7 +265,7 @@ cloud.uploader.upload(file.path, uploadOptions).then(r => done(null, r)).catch(e
   }
 
   // ===============================
-  // 📌 Delete template by category + id
+  // Delete template by category + id
   // ===============================
   async deleteTemplate(req, res) {
     try {
@@ -304,9 +274,18 @@ cloud.uploader.upload(file.path, uploadOptions).then(r => done(null, r)).catch(e
       if (!category || !templateId) {
         return res.status(400).json({ success: false, error: 'category and templateId are required' });
       }
-      const publicId = `${this.TEMPLATE_FOLDER_PREFIX}/${category}/${templateId}`;
-const result = await cloud.uploader.destroy(publicId, { resource_type: 'image' });
-      return res.json({ success: true, data: { result, public_id: publicId } });
+
+      // List objects to find the actual file (we don't know the extension)
+      const prefix = `${this.TEMPLATE_FOLDER_PREFIX}/${category}/${templateId}`;
+      const objects = await minio.listObjects(prefix);
+
+      if (objects.length === 0) {
+        return res.status(404).json({ success: false, error: 'Template not found' });
+      }
+
+      // Delete the first matching object
+      const result = await minio.deleteObject(objects[0].name);
+      return res.json({ success: true, data: { result, public_id: objects[0].name } });
     } catch (err) {
       console.error('Error deleting template:', err);
       return res.status(500).json({ success: false, error: 'Failed to delete template' });
@@ -314,49 +293,54 @@ const result = await cloud.uploader.destroy(publicId, { resource_type: 'image' }
   }
 
   // ===============================
-  // 📌 Search templates
+  // Search templates
   // ===============================
   async searchTemplates(req, res) {
     try {
-      const query = (req.query.query || '').trim();
+      const query = (req.query.query || '').trim().toLowerCase();
       const categories = (req.query.categories || '').split(',').filter(Boolean);
       const pageNum = parseInt(req.query.page) || 1;
       const limitNum = parseInt(req.query.limit) || 20;
+      const offset = (pageNum - 1) * limitNum;
 
-      const expressions = [];
-      expressions.push(`folder:${this.TEMPLATE_FOLDER_PREFIX}/*`);
+      // List all objects under the template prefix
+      const objects = await minio.listObjects(`${this.TEMPLATE_FOLDER_PREFIX}/`);
+
+      // Filter by categories if specified
+      let filteredObjects = objects;
+      if (categories.length > 0) {
+        const safeCats = categories.map(c => this.sanitizeCategory(c).toLowerCase());
+        filteredObjects = objects.filter(obj => {
+          const objCategory = this.extractCategory(obj.name);
+          return objCategory && safeCats.includes(objCategory.toLowerCase());
+        });
+      }
+
+      // Filter by query (search in object name/id)
       if (query) {
-        expressions.push(`(${[
-          `public_id:*${query}*`,
-          `tags=${query}`,
-          `context=${query}`
-        ].join(' OR ')})`);
-      }
-      if (categories.length) {
-        const cats = categories.map(c => this.sanitizeCategory(c));
-        expressions.push(`(${cats.map(c => `folder:${this.TEMPLATE_FOLDER_PREFIX}/${c}/*`).join(' OR ')})`);
+        filteredObjects = filteredObjects.filter(obj =>
+          obj.name.toLowerCase().includes(query)
+        );
       }
 
-      const expression = expressions.join(' AND ');
-const result = await cloud.search
-        .expression(expression)
-        .sort_by('created_at', 'desc')
-        .max_results(limitNum)
-        .next_cursor(req.query.next_cursor || undefined)
-        .execute();
+      // Sort by lastModified descending
+      filteredObjects.sort((a, b) => new Date(b.lastModified) - new Date(a.lastModified));
 
-      const templates = (result.resources || []).map(r => ({
-        id: this.extractTemplateId(r.public_id),
-        category: this.extractCategory(r.public_id),
-        secure_url: r.secure_url,
-        url: r.secure_url,
-        public_id: r.public_id,
-        format: r.format,
-        created_at: r.created_at,
-        width: r.width,
-        height: r.height,
-        tags: r.tags,
-        context: r.context,
+      // Paginate
+      const paginatedObjects = filteredObjects.slice(offset, offset + limitNum);
+
+      const templates = await Promise.all(paginatedObjects.map(async obj => {
+        const url = await minio.getPublicUrl(obj.name);
+        return {
+          id: this.extractTemplateId(obj.name),
+          category: this.extractCategory(obj.name),
+          url,
+          secure_url: url,
+          public_id: obj.name,
+          format: this.getFormat(obj.name),
+          created_at: obj.lastModified,
+          size: obj.size,
+        };
       }));
 
       return res.json({
@@ -366,9 +350,9 @@ const result = await cloud.search
           pagination: {
             current_page: pageNum,
             per_page: limitNum,
-            total_count: result?.total_count || templates.length,
-            has_next_page: !!result?.next_cursor,
-            next_cursor: result?.next_cursor || null
+            total_count: filteredObjects.length,
+            has_next_page: offset + limitNum < filteredObjects.length,
+            next_cursor: offset + limitNum < filteredObjects.length ? String(pageNum + 1) : null
           }
         }
       });
