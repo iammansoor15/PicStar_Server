@@ -125,14 +125,20 @@ class VideoController {
 
     console.log(`   Original video: ${origW}x${origH}`);
 
-    // Scale crop coordinates from preview to original video
-    const scaleX = origW / pw;
-    const scaleY = origH / ph;
-    const realX = Math.round(cx * scaleX);
-    const realY = Math.round(cy * scaleY);
-    const realW = Math.round(cw * scaleX);
-    const realH = Math.round(ch * scaleY);
+    // Map crop coordinates from preview pixels to original video pixels using the same
+    // transform the browser preview (object-fit: contain) and the app (resizeMode="contain")
+    // both apply: a single uniform scale, centered, with the shorter axis letterboxed.
+    // Independent X/Y scale factors here would distort the crop's aspect ratio to match the
+    // source video's aspect ratio whenever it isn't already 9:16.
+    const scale = Math.min(pw / origW, ph / origH);
+    const offsetX = (pw - origW * scale) / 2; // >= 0 - letterbar margin on the shorter axis
+    const offsetY = (ph - origH * scale) / 2;
+    const realX = Math.max(0, Math.round((cx - offsetX) / scale));
+    const realY = Math.max(0, Math.round((cy - offsetY) / scale));
+    const realW = Math.round(cw / scale);
+    const realH = Math.round(ch / scale);
 
+    console.log(`   Contain scale: ${scale.toFixed(4)}, offset: (${offsetX.toFixed(1)}, ${offsetY.toFixed(1)})`);
     console.log(`   Scaled crop: ${realW}x${realH} at (${realX},${realY})`);
 
     // Create output path

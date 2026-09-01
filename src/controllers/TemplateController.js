@@ -50,19 +50,25 @@ async function cropImageWithFFmpeg(inputPath, cropParams) {
 
     console.log(`   Original image: ${origW}x${origH}`);
 
-    // Scale crop coordinates from preview to original image
-    const scaleX = origW / pw;
-    const scaleY = origH / ph;
-    const realX = Math.max(0, Math.round(cx * scaleX));
-    const realY = Math.max(0, Math.round(cy * scaleY));
-    let realW = Math.round(cw * scaleX);
-    let realH = Math.round(ch * scaleY);
+    // Map crop coordinates from preview pixels to original image pixels using the same
+    // transform the browser preview (object-fit: contain) and the app (resizeMode="contain")
+    // both apply: a single uniform scale, centered, with the shorter axis letterboxed. Using
+    // independent X/Y scale factors here (origW/pw, origH/ph) would silently distort the crop's
+    // aspect ratio to match the original image's aspect ratio whenever the upload isn't already
+    // 9:16 - a "9:16 crop" selection would map back to a non-9:16 region of the source file.
+    const scale = Math.min(pw / origW, ph / origH);
+    const offsetX = (pw - origW * scale) / 2; // >= 0 - letterbar margin on the shorter axis
+    const offsetY = (ph - origH * scale) / 2;
+    const realX = Math.max(0, Math.round((cx - offsetX) / scale));
+    const realY = Math.max(0, Math.round((cy - offsetY) / scale));
+    let realW = Math.round(cw / scale);
+    let realH = Math.round(ch / scale);
 
     // Ensure crop doesn't exceed image bounds
     if (realX + realW > origW) realW = origW - realX;
     if (realY + realH > origH) realH = origH - realY;
 
-    console.log(`   Scale factors: X=${scaleX.toFixed(2)}, Y=${scaleY.toFixed(2)}`);
+    console.log(`   Contain scale: ${scale.toFixed(4)}, offset: (${offsetX.toFixed(1)}, ${offsetY.toFixed(1)})`);
     console.log(`   Scaled crop: ${realW}x${realH} at (${realX},${realY})`);
 
     // Create output path
@@ -300,6 +306,38 @@ class TemplateController {
         }
       } catch (e) {
         console.warn('Invalid reference dimensions, using defaults');
+      }
+
+      // If a crop was applied, the saved image is now the crop_w x crop_h region, not the
+      // full pre-crop 270x480 canvas the editor captured photo/text axis against. Rebase the
+      // reference frame and both axes onto the crop rectangle so they describe the image that
+      // actually ships, instead of the original uncropped canvas.
+      if (hasCrop) {
+        try {
+          const cropX = parseInt(req.body.crop_x, 10) || 0;
+          const cropY = parseInt(req.body.crop_y, 10) || 0;
+          const cropW = parseInt(req.body.crop_w, 10);
+          const cropH = parseInt(req.body.crop_h, 10);
+
+          if (Number.isFinite(cropW) && cropW > 0 && Number.isFinite(cropH) && cropH > 0) {
+            coordRef = { width: cropW, height: cropH };
+
+            const rebase = (axis) => {
+              axis.x = Math.max(0, Math.min(cropW - axis.width, axis.x - cropX));
+              axis.y = Math.max(0, Math.min(cropH - axis.height, axis.y - cropY));
+            };
+            rebase(photoAxis);
+            rebase(textAxis);
+
+            console.log('📐 Rebased axis onto crop rectangle:', {
+              crop: { x: cropX, y: cropY, w: cropW, h: cropH },
+              photoAxis,
+              textAxis,
+            });
+          }
+        } catch (e) {
+          console.warn('Failed to rebase axis onto crop rectangle, using pre-crop axis. Error:', e?.message || e);
+        }
       }
 
       // Persist to MongoDB (serial_no auto-increments per subcategory)

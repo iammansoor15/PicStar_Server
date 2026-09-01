@@ -63,15 +63,21 @@
     h1, h2 { letter-spacing: .3px; }
 
     /* Visual editor */
-    .editor-canvas { position: relative; background: #0b1220; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; margin: 0 auto; }
-.editor-canvas img { display: block; user-select: none; pointer-events: none; width: 100%; height: 100%; }
+    /* No `border` here on purpose: with `box-sizing: border-box` a 1px border makes the real
+       content box 268x478 while we size the canvas 270x480, which shifts every saved
+       coordinate by 1px. box-shadow draws the same outline without taking layout space. */
+    .editor-canvas { position: relative; background: #0b1220; box-shadow: 0 0 0 1px var(--border); border-radius: 12px; overflow: hidden; margin: 0 auto; }
+/* object-fit: contain matches the app's resizeMode="contain" (HeroScreen.jsx) - a non-9:16
+   upload is shown whole, letterboxed and centered, exactly as it will be on-device, instead of
+   being stretched or cropped to fill the 270x480 box. */
+.editor-canvas img { display: block; user-select: none; pointer-events: none; width: 100%; height: 100%; object-fit: contain; background: #000; }
 .overlay-box { position: absolute; border: 2px dashed #94a3b8; color: #e5e7eb; background: rgba(148,163,184,.08); border-radius: 10px; cursor: grab; display: flex; align-items: start; }
     .overlay-box:active { cursor: grabbing; }
     .overlay-box span { font-size: 12px; margin: 6px; padding: 2px 6px; border-radius: 999px; background: rgba(0,0,0,.35); }
     .overlay-box.photo { border-color: #22d3ee; background: rgba(34,211,238,.08); }
     .overlay-box.photo span { background: rgba(34,211,238,.2); }
-.overlay-box.text { border-color: #f472b6; background: rgba(244,114,182,.08); }
-    .overlay-box.text span { background: rgba(244,114,182,.2); }
+.overlay-box.text { border-color: #f472b6; background: rgba(244,114,182,.08); align-items: center; }
+    .overlay-box.text span { background: rgba(244,114,182,.2); margin: 0 0 0 6px; }
     .overlay-box.crop { border-color: #10b981; border-width: 3px; border-style: solid; background: rgba(16,185,129,.1); }
     .overlay-box.crop span { background: rgba(16,185,129,.3); }
     .resize-handle { position: absolute; width: 14px; height: 14px; background: #10b981; border: 2px solid #fff; border-radius: 3px; cursor: nwse-resize; z-index: 10; }
@@ -123,6 +129,7 @@
         <div class="hint">Drag the boxes to set positions. Drag corner handles to resize. Enable crop to select the area to keep.</div>
         <div class="hint" style="color:#22d3ee;">Photo: 60-200px (square) • <span style="color:#f472b6;">Text: min 80x40px, max 80%x60%</span></div>
         <div class="hint" style="color:#10b981;">Reference Canvas: 270x480 (9:16) — coordinates match app pixel-to-pixel</div>
+        <div class="hint" style="color:#f59e0b;">With crop enabled, Photo/Text positions are relative to the crop area (what actually ships), not the full image — boxes are constrained to stay inside it.</div>
         <div class="crop-toggle">
           <input type="checkbox" id="enableCrop" />
           <label for="enableCrop" style="font-weight:600; color:#10b981;">Enable Crop (9:16 aspect ratio)</label>
@@ -325,13 +332,13 @@
     // Photo container constraints (from HeroScreen.jsx DynamicPhotoElement)
     const PHOTO_MIN_SIZE = 60;   // minSize in app
     const PHOTO_MAX_SIZE = 200;  // maxSize in app
-    const PHOTO_DEFAULT_SIZE = 100; // Default photo size in app
+    const PHOTO_DEFAULT_SIZE = 80; // Default photo size in app
 
     // Text container constraints (from DraggableText.jsx)
     const TEXT_MIN_WIDTH = 80;   // minWidth style in app
     const TEXT_MIN_HEIGHT = 40;  // minHeight style in app
     const TEXT_DEFAULT_WIDTH = 120;  // default width in app
-    const TEXT_DEFAULT_HEIGHT = 50;  // default height in app
+    const TEXT_DEFAULT_HEIGHT = 44;  // default height in app
     // Max will be calculated as percentage of container (80% width, 60% height)
 
     // Current sizes (will be updated during resize)
@@ -541,6 +548,59 @@
 
     function clamp(n, min, max) { return Math.max(min, Math.min(max, n)); }
 
+    // Content box of the editor canvas, in viewport coordinates.
+    // getBoundingClientRect() returns the BORDER box; any border on .editor-canvas would
+    // offset every measurement by its width. clientLeft/clientTop are the border widths and
+    // clientWidth/clientHeight the padding box, so this stays exact even if a border returns.
+    function canvasBox() {
+      const r = editorCanvas.getBoundingClientRect();
+      return {
+        left: r.left + editorCanvas.clientLeft,
+        top: r.top + editorCanvas.clientTop,
+        width: editorCanvas.clientWidth,
+        height: editorCanvas.clientHeight,
+      };
+    }
+
+    // Bounds photo/text boxes must stay within, relative to the canvas origin. With crop
+    // enabled this is the crop rectangle, not the full canvas - the server crops the image to
+    // that rectangle and rebases axis coordinates onto it, so the editor must match what will
+    // actually ship rather than letting boxes be placed outside the area that survives the crop.
+    function getPlacementBounds(canvasR) {
+      if (enableCropCheckbox.checked && cropBox.style.display !== 'none') {
+        const cropR = cropBox.getBoundingClientRect();
+        return {
+          left: cropR.left - canvasR.left,
+          top: cropR.top - canvasR.top,
+          width: cropR.width,
+          height: cropR.height,
+        };
+      }
+      return { left: 0, top: 0, width: canvasR.width, height: canvasR.height };
+    }
+
+    // Re-clamp the photo/text boxes into the current crop rectangle - called whenever the
+    // crop rectangle itself moves or resizes, so a box crop just excluded doesn't stay
+    // silently out of bounds until the next drag.
+    function clampBoxesToBounds() {
+      if (!enableCropCheckbox.checked || cropBox.style.display === 'none') return;
+      const canvasR = canvasBox();
+      const bounds = getPlacementBounds(canvasR);
+      [photoBox, textBox].forEach((el) => {
+        const r = el.getBoundingClientRect();
+        const w = r.width, h = r.height;
+        const minX = bounds.left, maxX = bounds.left + bounds.width - w;
+        const minY = bounds.top, maxY = bounds.top + bounds.height - h;
+        let x = r.left - canvasR.left;
+        let y = r.top - canvasR.top;
+        x = maxX >= minX ? clamp(x, minX, maxX) : minX;
+        y = maxY >= minY ? clamp(y, minY, maxY) : minY;
+        el.style.left = Math.round(x) + 'px';
+        el.style.top = Math.round(y) + 'px';
+      });
+      updateOutputs();
+    }
+
     function makeDraggable(el, isCropBox = false) {
       let dragging = false;
       let offsetX = 0, offsetY = 0;
@@ -553,29 +613,32 @@
       el.addEventListener('pointerup', (e) => {
         dragging = false; el.releasePointerCapture(e.pointerId);
         updateOutputs();
-        if (isCropBox) updateCropOutputs();
+        if (isCropBox) { updateCropOutputs(); clampBoxesToBounds(); }
       });
       el.addEventListener('pointercancel', () => { dragging = false; });
       el.addEventListener('pointermove', (e) => {
         if (!dragging) return;
-        const canvasR = editorCanvas.getBoundingClientRect();
+        const canvasR = canvasBox();
+        const bounds = isCropBox ? { left: 0, top: 0, width: canvasR.width, height: canvasR.height } : getPlacementBounds(canvasR);
         const w = el.getBoundingClientRect().width;
         const h = el.getBoundingClientRect().height;
         let x = e.clientX - canvasR.left - offsetX;
         let y = e.clientY - canvasR.top - offsetY;
-        x = clamp(Math.round(x), 0, Math.round(canvasR.width - w));
-        y = clamp(Math.round(y), 0, Math.round(canvasR.height - h));
+        const minX = bounds.left, maxX = bounds.left + bounds.width - w;
+        const minY = bounds.top, maxY = bounds.top + bounds.height - h;
+        x = maxX >= minX ? clamp(Math.round(x), Math.round(minX), Math.round(maxX)) : Math.round(minX);
+        y = maxY >= minY ? clamp(Math.round(y), Math.round(minY), Math.round(maxY)) : Math.round(minY);
         el.style.left = x + 'px';
         el.style.top = y + 'px';
         updateOutputs();
-        if (isCropBox) updateCropOutputs();
+        if (isCropBox) { updateCropOutputs(); clampBoxesToBounds(); }
       });
     }
 
     function updateOutputs() {
       const p = photoBox.getBoundingClientRect();
       const t = textBox.getBoundingClientRect();
-      const c = editorCanvas.getBoundingClientRect();
+      const c = canvasBox();
       const px = Math.round(p.left - c.left), py = Math.round(p.top - c.top);
       const tx = Math.round(t.left - c.left), ty = Math.round(t.top - c.top);
       const pw = Math.round(p.width), ph = Math.round(p.height);
@@ -613,6 +676,7 @@
         cropBox.style.display = 'block';
         initCropBox();
         updateCropOutputs();
+        clampBoxesToBounds();
       } else {
         cropBox.style.display = 'none';
         clearCropInputs();
@@ -620,7 +684,7 @@
     });
 
     function initCropBox() {
-      const canvasR = editorCanvas.getBoundingClientRect();
+      const canvasR = canvasBox();
       // Default crop box: 9:16 aspect ratio, centered
       const aspectRatio = 9 / 16;
       let cropH = Math.round(canvasR.height * 0.8);
@@ -637,7 +701,7 @@
 
     function updateCropOutputs() {
       if (!enableCropCheckbox.checked) return;
-      const c = editorCanvas.getBoundingClientRect();
+      const c = canvasBox();
       const crop = cropBox.getBoundingClientRect();
       const cx = Math.round(crop.left - c.left);
       const cy = Math.round(crop.top - c.top);
@@ -677,7 +741,7 @@
     });
     resizeHandle.addEventListener('pointermove', (e) => {
       if (!resizing) return;
-      const canvasR = editorCanvas.getBoundingClientRect();
+      const canvasR = canvasBox();
       const cropR = cropBox.getBoundingClientRect();
       const aspectRatio = 9 / 16;
       // Calculate new width based on mouse position
@@ -692,6 +756,7 @@
       cropBox.style.width = newW + 'px';
       cropBox.style.height = newH + 'px';
       updateCropOutputs();
+      clampBoxesToBounds();
     });
 
     // ============================================
@@ -718,7 +783,7 @@
 
     photoResizeHandle.addEventListener('pointermove', (e) => {
       if (!photoResizing) return;
-      const canvasR = editorCanvas.getBoundingClientRect();
+      const canvasR = canvasBox();
       const boxR = photoBox.getBoundingClientRect();
 
       // Calculate delta (average of dx and dy for square resize)
@@ -730,10 +795,11 @@
       let newSize = photoResizeStart.size + delta;
       newSize = Math.max(PHOTO_MIN_SIZE, Math.min(PHOTO_MAX_SIZE, newSize));
 
-      // Ensure box stays within canvas
+      // Ensure box stays within the crop rectangle (or the full canvas if crop is off)
+      const bounds = getPlacementBounds(canvasR);
       const maxAllowedSize = Math.min(
-        canvasR.width - (boxR.left - canvasR.left),
-        canvasR.height - (boxR.top - canvasR.top)
+        (bounds.left + bounds.width) - (boxR.left - canvasR.left),
+        (bounds.top + bounds.height) - (boxR.top - canvasR.top)
       );
       newSize = Math.min(newSize, maxAllowedSize);
       newSize = Math.max(PHOTO_MIN_SIZE, newSize);
@@ -768,14 +834,14 @@
 
     textResizeHandle.addEventListener('pointermove', (e) => {
       if (!textResizing) return;
-      const canvasR = editorCanvas.getBoundingClientRect();
+      const canvasR = canvasBox();
       const boxR = textBox.getBoundingClientRect();
 
       // Calculate new dimensions
       const dx = e.clientX - textResizeStart.x;
       const dy = e.clientY - textResizeStart.y;
 
-      // App constraints: min 80x40, max 80% width / 60% height
+      // App constraints: min 80x40, max 80% width / 60% height of the canvas
       const textMaxW = canvasR.width * 0.8;
       const textMaxH = canvasR.height * 0.6;
 
@@ -786,13 +852,14 @@
       newW = Math.max(TEXT_MIN_WIDTH, Math.min(textMaxW, newW));
       newH = Math.max(TEXT_MIN_HEIGHT, Math.min(textMaxH, newH));
 
-      // Ensure box stays within canvas
-      const maxAllowedW = canvasR.width - (boxR.left - canvasR.left);
-      const maxAllowedH = canvasR.height - (boxR.top - canvasR.top);
+      // Ensure box stays within the crop rectangle (or the full canvas if crop is off)
+      const bounds = getPlacementBounds(canvasR);
+      const maxAllowedW = (bounds.left + bounds.width) - (boxR.left - canvasR.left);
+      const maxAllowedH = (bounds.top + bounds.height) - (boxR.top - canvasR.top);
       newW = Math.min(newW, maxAllowedW);
       newH = Math.min(newH, maxAllowedH);
 
-      // Re-apply minimums after canvas constraint
+      // Re-apply minimums after the bounds constraint
       newW = Math.max(TEXT_MIN_WIDTH, newW);
       newH = Math.max(TEXT_MIN_HEIGHT, newH);
 
