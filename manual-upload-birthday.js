@@ -2,9 +2,10 @@ import fs from 'fs/promises';
 import path from 'path';
 import FormData from 'form-data';
 import fetch from 'node-fetch';
+import config from './src/config/config.js';
 
 // Configuration
-const SERVER_URL = 'https://picstar-server.onrender.com';
+const SERVER_URL = config.app.serverUrl;
 const ASSETS_PATH = path.resolve('../app/assets');
 
 console.log('🚀 Starting manual birthday template upload...');

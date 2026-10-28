@@ -19,6 +19,27 @@ The Narayana App server provides background removal capabilities using local pro
 
 ## Environment Configuration
 
+### Winter domain
+
+Set `BASE_URL=https://winter.codebinary.in` in the deployed environment or `.env`,
+then restart the server. The local `.env` contains this public URL; supply your
+existing database, storage, payment, and authentication settings separately.
+
+The server and its web pages use this origin. `PUBLIC_API_BASE_URL` is an optional
+override when pages need to call a different API origin. Existing deployments
+using `SERVER_URL` remain supported, with `BASE_URL` taking priority.
+Update or remove any old `PUBLIC_API_BASE_URL` value when moving domains.
+
+If `CORS_ORIGIN` is restricted, include `https://winter.codebinary.in`. Configure
+DNS, Nginx `server_name`, and the TLS certificate for the subdomain, and proxy the
+full request path to the Node port. Keep `/winter` in the deletion form URL:
+
+`https://winter.codebinary.in/winter/account-delete-request`
+
+Run `npm run test:config` to verify environment handling and the public config
+HTTP route without connecting to the database. See the mobile project's
+`PRODUCTION_CONFIG.md` for the app build steps.
+
 ### Development Setup
 
 1. **Copy environment template:**
@@ -31,7 +52,7 @@ The Narayana App server provides background removal capabilities using local pro
    NODE_ENV=development
    PORT=3000
    SERVER_HOST=0.0.0.0
-   SERVER_URL=http://localhost:3000
+   BASE_URL=http://localhost:3000
    
    # Background removal settings
    UPLOADS_DIR=uploads
@@ -54,7 +75,7 @@ The Narayana App server provides background removal capabilities using local pro
 
 1. **Copy production template:**
    ```bash
-   cp .env.production .env
+   cp .env.example .env
    ```
 
 2. **Update production values:**
@@ -62,7 +83,7 @@ The Narayana App server provides background removal capabilities using local pro
    NODE_ENV=production
    PORT=3000
    SERVER_HOST=0.0.0.0
-   SERVER_URL=https://yourdomain.com
+   BASE_URL=https://winter.codebinary.in
    
    # Stricter limits for production
    MAX_FILE_SIZE=20MB
@@ -89,7 +110,9 @@ The Narayana App server provides background removal capabilities using local pro
 - `NODE_ENV`: Environment mode (development/production)
 - `PORT`: Server port (default: 3000)
 - `SERVER_HOST`: Bind address (0.0.0.0 for all interfaces)
-- `SERVER_URL`: Public server URL for responses
+- `BASE_URL`: Required public backend origin, including `http://` or `https://`
+- `SERVER_URL`: Legacy environment alias, used when `BASE_URL` is absent
+- `PUBLIC_API_BASE_URL`: Optional public web API origin; defaults to `BASE_URL`
 
 ### Background Removal
 - `UPLOADS_DIR`: Upload directory path (default: uploads)

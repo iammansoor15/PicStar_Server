@@ -1,9 +1,10 @@
 import axios from 'axios';
+import config from './src/config/config.js';
 
 const testPayment = async () => {
   try {
     console.log('Testing payment endpoint...');
-    const response = await axios.post('http://31.97.233.69:10000/api/payments/create-order', {
+    const response = await axios.post(`${config.app.serverUrl}/api/payments/create-order`, {
       amount: 1,
       currency: 'INR'
     }, {

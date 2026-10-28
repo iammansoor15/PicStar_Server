@@ -11,6 +11,7 @@ import paymentRoutes from './routes/payment-routes.js';
 import notificationRoutes from './routes/notification-routes.js';
 import privacyRoutes from './routes/privacy-routes.js';
 import winterRoutes from './routes/winter-routes.js';
+import publicConfigRoutes from './routes/public-config-routes.js';
 import notificationService from './services/notification-service.js';
 import { connectDB } from './config/db.js';
 import { errorHandler } from './middleware/error-handler.js';
@@ -55,11 +56,7 @@ app.use('/uploads', express.static(config.paths.uploads, {
 }));
 
 // Public runtime config for static pages
-app.get('/public-config.js', (req, res) => {
-  const apiBase = process.env.PUBLIC_API_BASE_URL || config.app.serverUrl || '';
-  const safe = String(apiBase).replace(/"/g, '\\"');
-  res.type('application/javascript').send(`window.APP_CONFIG={API_BASE_URL:"${safe}"};`);
-});
+app.use(publicConfigRoutes);
 
 app.use('/', imageRoutes);
 app.use('/api/templates', templateRoutes);

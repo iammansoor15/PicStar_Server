@@ -1,12 +1,19 @@
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { normalizeBaseUrl } from './base-url.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Load environment variables
-dotenv.config();
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
+
+// SERVER_URL remains an environment-only alias for existing deployments.
+const baseUrl = normalizeBaseUrl(process.env.BASE_URL || process.env.SERVER_URL);
+const publicApiBaseUrl = process.env.PUBLIC_API_BASE_URL
+    ? normalizeBaseUrl(process.env.PUBLIC_API_BASE_URL, 'PUBLIC_API_BASE_URL')
+    : baseUrl;
 
 // Helper function to parse file sizes like '50MB'
 const parseFileSize = (sizeStr) => {
@@ -27,8 +34,8 @@ const config = {
         host: process.env.SERVER_HOST || '0.0.0.0', // Listen on all interfaces to allow connections from mobile devices
         env: process.env.NODE_ENV || 'development',
         apiPrefix: '/api',
-        // Server URL from environment or localhost for development
-        serverUrl: process.env.SERVER_URL || 'http://localhost:10000',
+        serverUrl: baseUrl,
+        publicApiBaseUrl,
     },
     auth: {
         jwtSecret: process.env.JWT_SECRET || 'dev_jwt_secret_change_me',

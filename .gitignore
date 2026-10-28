@@ -44,6 +44,8 @@ Thumbs.db
 
 # Misc
 .env
+.env.*
+!.env.example
 .expo
 .expo-shared
 
