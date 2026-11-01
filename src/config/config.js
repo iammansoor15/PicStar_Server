@@ -42,6 +42,9 @@ const config = {
         jwtExpiresIn: process.env.JWT_EXPIRES || '7d',
         passwordSaltRounds: parseInt(process.env.PASSWORD_SALT_ROUNDS) || 10,
     },
+    twofactor: {
+        apiKey: (process.env.TWOFACTOR_API_KEY || '').trim(),
+    },
     paths: {
         root: path.resolve(__dirname, '../../'),
         uploads: path.resolve(__dirname, '../../', process.env.UPLOADS_DIR || 'uploads'),

@@ -1,6 +1,7 @@
 import axios from 'axios';
+import config from '../config/config.js';
 
-const API_KEY = 'd1f86e87-f560-11f0-a6b2-0200cd936042';
+const API_KEY = config.twofactor.apiKey;
 const BASE_URL = 'https://2factor.in/API/V1';
 
 /**
@@ -13,6 +14,10 @@ class OTPService {
    * @returns {Promise<{success: boolean, sessionId?: string, error?: string}>}
    */
   async sendOTP(phone) {
+    if (!API_KEY) {
+      return { success: false, error: 'SMS service is not configured.' };
+    }
+
     try {
       // Normalize phone number to 10 digits (remove +91 if present)
       let phoneNumber = phone.replace(/\D/g, '');
@@ -33,7 +38,6 @@ class OTPService {
       // Using the correct SMS endpoint with auto-generated OTP
       const url = `${BASE_URL}/${API_KEY}/SMS/${phoneNumber}/${otp}`;
       
-      console.log('🌐 API URL:', url);
       
       const response = await axios.get(url, {
         timeout: 15000, // Increased timeout for SMS delivery
@@ -74,6 +78,10 @@ class OTPService {
    * @returns {Promise<{success: boolean, error?: string}>}
    */
   async verifyOTP(sessionId, otp) {
+    if (!API_KEY) {
+      return { success: false, error: 'SMS service is not configured.' };
+    }
+
     try {
       // For 2factor.in, we verify using the session ID
       const url = `${BASE_URL}/${API_KEY}/SMS/VERIFY/${sessionId}/${otp}`;
