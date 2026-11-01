@@ -957,6 +957,20 @@
         const data = await res.json().catch(() => ({}));
         if (!res.ok || data.success === false) throw new Error(data.error || ('HTTP ' + res.status));
         singleOut.textContent = JSON.stringify(data, null, 2);
+        if (kind === 'video' && res.status === 202 && data.data?.id) {
+          singleSubmit.textContent = 'Preparing video...';
+          for (let attempt = 0; attempt < 90; attempt++) {
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            const check = await fetch(apiUrl('/api/videos/' + data.data.id + '/playback'), { cache: 'no-store' });
+            if (!check.ok) continue;
+            const result = await check.json();
+            const template = result.data?.template;
+            if (template?.hls_status === 'failed') throw new Error('Video could not be prepared. Please upload it again.');
+            if (template?.hls_status === 'ready') { singleOut.textContent = JSON.stringify(result, null, 2); break; }
+            singleOut.textContent = 'Video uploaded. Preparing playback...';
+            if (attempt === 89) singleOut.textContent = 'Video uploaded. Preparation is continuing; refresh the templates page shortly.';
+          }
+        }
       } catch (err) {
         singleOut.textContent = 'Error: ' + (err.message || String(err));
       } finally {

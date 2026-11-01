@@ -7,6 +7,9 @@
   "scripts": {
     "start": "node src/app.js",
     "dev": "node src/app.js",
+    "worker:hls": "node src/workers/hls-worker.js",
+    "hls:migrate": "node src/scripts/migrate-hls.js",
+    "test:hls": "node --test src/tests/video-media.test.js src/tests/hls-worker.test.js src/tests/hls-encoder.test.js",
     "test:config": "node --test src/config/base-url.test.js",
     "migrate-templates": "node src/scripts/migrate-templates.js",
     "migrate-cloudinary-to-minio": "node src/scripts/migrate-cloudinary-to-minio.js"

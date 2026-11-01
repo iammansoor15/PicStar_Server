@@ -2,8 +2,10 @@ import express from 'express';
 import multer from 'multer';
 import path from 'path';
 import TemplateController from '../controllers/TemplateController.js';
+import { videoMedia } from '../services/video-media-service.js';
 
 const router = express.Router();
+router.use(videoMedia.middleware);
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({

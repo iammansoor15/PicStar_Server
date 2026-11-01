@@ -89,6 +89,17 @@ const config = {
         secretKey: process.env.MINIO_SECRET_KEY,
         bucket: process.env.MINIO_BUCKET || 'picstar',
     },
+    hls: {
+        enabled: process.env.HLS_ENABLED === 'true',
+        signingSecret: process.env.HLS_SIGNING_SECRET || process.env.JWT_SECRET || '',
+        urlTtlSeconds: Math.min(86400, Math.max(600, Number(process.env.HLS_URL_TTL_SECONDS) || 21600)),
+        ffmpeg: process.env.FFMPEG_PATH || 'ffmpeg',
+        ffprobe: process.env.FFPROBE_PATH || 'ffprobe',
+        encodingTimeoutMs: 900000,
+        maxDurationSeconds: Number(process.env.HLS_MAX_DURATION_SECONDS) || 600,
+        maxSourceBytes: 100 * 1024 * 1024,
+        storageHosts: [process.env.MINIO_ENDPOINT, ...(process.env.HLS_STORAGE_HOSTS || 's3.codebinary.in').split(',')].filter(Boolean),
+    },
     razorpay: {
         keyId: process.env.RAZORPAY_KEY_ID,
         keySecret: process.env.RAZORPAY_KEY_SECRET,

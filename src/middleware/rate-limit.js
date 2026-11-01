@@ -3,6 +3,8 @@ import config from '../config/config.js';
 
 // Create rate limiter with environment-based configuration
 export const rateLimiter = rateLimit({
+    // HLS requests are authenticated individually and must not consume the API request quota.
+    skip: req => req.path.startsWith('/api/media/'),
     windowMs: config.rateLimit.windowMs, // Time window in milliseconds
     max: config.rateLimit.maxRequests, // Limit each IP to max requests per windowMs
     message: {

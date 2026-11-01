@@ -2,8 +2,12 @@ import express from 'express';
 import multer from 'multer';
 import path from 'path';
 import videoController from '../controllers/video-controller.js';
+import mongoose from 'mongoose';
+import Template from '../models/Template.js';
+import { videoMedia } from '../services/video-media-service.js';
 
 const router = express.Router();
+router.use(videoMedia.middleware);
 
 // Configure multer for video uploads (disk storage)
 const storage = multer.diskStorage({
@@ -33,6 +37,18 @@ const upload = multer({
 // Health for videos API
 router.get('/health', (req, res) => {
   res.status(200).json({ status: 'ok', service: 'videos', timestamp: new Date().toISOString() });
+});
+
+router.get('/:id/playback', async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.id)) return res.status(404).json({ success: false, error: 'Video not found' });
+  try {
+    const template = await Template.findOne({ _id: req.params.id, resource_type: 'video' }).lean();
+    if (!template) return res.status(404).json({ success: false, error: 'Video not found' });
+    res.set('Cache-Control', 'no-store');
+    return res.json({ success: true, data: { template } });
+  } catch {
+    return res.status(503).json({ success: false, error: 'Video is temporarily unavailable' });
+  }
 });
 
 // POST /api/videos/upload - field name: "video"

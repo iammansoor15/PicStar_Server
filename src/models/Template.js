@@ -8,6 +8,17 @@ const TemplateSchema = new mongoose.Schema({
   // Resource type for the template: 'image' or 'video' (default 'image' for backward compatibility)
   resource_type: { type: String, enum: ['image', 'video'], default: 'image', index: true },
 
+  video_media: {
+    type: new mongoose.Schema({
+      status: { type: String, enum: ['pending', 'processing', 'ready', 'failed'] },
+      version: String, original_key: String, original_url: String, source_key: String,
+      hls_prefix: String, poster_key: String, width: Number, height: Number, duration: Number,
+      crop: mongoose.Schema.Types.Mixed, attempts: { type: Number, default: 0 },
+      claim: String, locked_until: Date, next_attempt_at: Date, ready_at: Date, last_error: String,
+    }, { _id: false }),
+    default: undefined,
+  },
+
   serial_no: { type: Number, required: true, index: true },
   // Main and sub categories stored explicitly (subcategory is primary)
   main_category: { type: String, index: true, default: null },
@@ -37,6 +48,8 @@ const TemplateSchema = new mongoose.Schema({
     height: { type: Number, default: 480 },
   },
 }, { collection: 'templates' });
+
+TemplateSchema.index({ resource_type: 1, 'video_media.status': 1, 'video_media.next_attempt_at': 1 });
 
 // Auto-increment serial_no per subcategory (fallback to legacy 'category' if present)
 TemplateSchema.pre('validate', async function(next) {

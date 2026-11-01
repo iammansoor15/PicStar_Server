@@ -4,6 +4,7 @@ import path from 'path';
 import { promisify } from 'util';
 import { exec } from 'child_process';
 import Template from '../models/Template.js';
+import { hlsStorage } from '../services/hls-storage.js';
 
 const execPromise = promisify(exec);
 
@@ -421,6 +422,8 @@ class TemplateController {
       // Shape response to include combination requested
       // Include photo/text axis and coordinate_reference for pixel-perfect positioning
       const items = picked.map(t => ({
+        _id: String(t._id),
+        video_media: t.video_media,
         category: t.main_category ?? null,
         subcategory: t.subcategory || t.category || null,
         image_url: t.image_url,
@@ -707,6 +710,16 @@ class TemplateController {
       const doc = await Template.findById(id).lean();
       if (!doc) return res.status(404).json({ success: false, error: 'Template not found' });
 
+      // Remove the document first so an encoding worker cannot publish a deleted template.
+      await Template.findByIdAndDelete(id);
+      if (doc.video_media) {
+        const versions = new Set([doc.video_media.version, doc.video_media.claim].filter(Boolean));
+        for (const version of versions) {
+          await hlsStorage.deletePrefix('video-media/' + String(doc._id) + '/' + version + '/').catch(() => {});
+        }
+        if (doc.video_media.original_key) await minio.deleteObject(doc.video_media.original_key);
+      }
+
       // Attempt MinIO deletion (best-effort)
       try {
         const url = doc.image_url || doc.video_url || '';
@@ -718,7 +731,6 @@ class TemplateController {
         console.warn('MinIO delete failed (continuing):', e?.message || e);
       }
 
-      await Template.findByIdAndDelete(id);
       return res.json({ success: true, data: { id } });
     } catch (error) {
       console.error('❌ Error in deleteTemplate:', error);

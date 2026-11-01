@@ -12,6 +12,7 @@ import notificationRoutes from './routes/notification-routes.js';
 import privacyRoutes from './routes/privacy-routes.js';
 import winterRoutes from './routes/winter-routes.js';
 import publicConfigRoutes from './routes/public-config-routes.js';
+import mediaRoutes from './routes/media-routes.js';
 import notificationService from './services/notification-service.js';
 import { connectDB } from './config/db.js';
 import { errorHandler } from './middleware/error-handler.js';
@@ -39,7 +40,7 @@ if (config.app.env === 'production') {
 if (config.app.env === 'production') {
     app.use(rateLimiter); // Rate limiting for production
 }
-app.use(requestLogger); // Request logging
+app.use((req, res, next) => req.path.startsWith('/api/media/') ? next() : requestLogger(req, res, next));
 app.use(cors(config.cors));
 app.use(express.json({ limit: '10mb' })); // Increase JSON payload limit
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
@@ -61,6 +62,7 @@ app.use(publicConfigRoutes);
 app.use('/', imageRoutes);
 app.use('/api/templates', templateRoutes);
 app.use('/api/videos', videoRoutes);
+app.use('/api/media', cors({ ...config.cors, exposedHeaders: ['Accept-Ranges', 'Content-Range', 'Content-Length', 'ETag'] }), mediaRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/profile-photo', profilePhotoRoutes);
 app.use('/api/payments', paymentRoutes);

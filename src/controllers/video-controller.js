@@ -5,63 +5,11 @@ import { promisify } from 'util';
 import { exec } from 'child_process';
 import Template from '../models/Template.js';
 import axios from 'axios';
+import { newVideoJob, parseVideoCrop } from '../utils/video-media.js';
 
 const execPromise = promisify(exec);
 
-// Standard output resolution for all videos (9:16 aspect ratio)
-const STANDARD_WIDTH = 1080;
-const STANDARD_HEIGHT = 1920;
-
 class VideoController {
-  // Standardize video to 1080x1920 resolution using FFmpeg
-  async standardizeVideoResolution(inputPath) {
-    console.log('📐 Standardizing video to 1080x1920...');
-
-    try {
-      // Get original video dimensions
-      const probeCmd = `ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=s=x:p=0 "${inputPath}"`;
-      const { stdout: probeOut } = await execPromise(probeCmd);
-      const [origW, origH] = probeOut.trim().split('x').map(Number);
-
-      console.log(`   Original: ${origW}x${origH}`);
-
-      // Check if already at standard resolution
-      if (origW === STANDARD_WIDTH && origH === STANDARD_HEIGHT) {
-        console.log('   ✅ Already at standard resolution');
-        return inputPath;
-      }
-
-      // Create output path
-      const ext = path.extname(inputPath);
-      const outputPath = inputPath.replace(ext, `_standardized${ext}`);
-
-      // Scale to 1080x1920, maintaining aspect ratio and padding if needed
-      // Using scale and pad to ensure exact 1080x1920 output
-      const ffmpegCmd = `ffmpeg -i "${inputPath}" -vf "scale=${STANDARD_WIDTH}:${STANDARD_HEIGHT}:force_original_aspect_ratio=decrease,pad=${STANDARD_WIDTH}:${STANDARD_HEIGHT}:(ow-iw)/2:(oh-ih)/2:black" -c:v libx264 -preset fast -crf 23 -c:a copy -y "${outputPath}"`;
-
-      console.log(`   Scaling to ${STANDARD_WIDTH}x${STANDARD_HEIGHT}...`);
-      await execPromise(ffmpegCmd);
-
-      // Verify output
-      if (!fs.existsSync(outputPath)) {
-        console.log('   ❌ Standardized file not created, using original');
-        return inputPath;
-      }
-
-      const origSize = fs.statSync(inputPath).size;
-      const newSize = fs.statSync(outputPath).size;
-      console.log(`   ✅ Standardized: ${(origSize/1024/1024).toFixed(2)}MB -> ${(newSize/1024/1024).toFixed(2)}MB`);
-
-      // Delete original, return standardized path
-      try { fs.unlinkSync(inputPath); } catch {}
-
-      return outputPath;
-    } catch (err) {
-      console.error('   ❌ Standardization failed:', err.message);
-      return inputPath;
-    }
-  }
-
   // Detect actual content area (excluding black bars/letterboxing) using FFmpeg cropdetect
   async detectContentArea(videoPath) {
     try {
@@ -94,69 +42,6 @@ class VideoController {
       console.warn('   ⚠️ Could not detect content area:', err.message);
       return null;
     }
-  }
-
-  // Crop video using FFmpeg
-  async cropVideoWithFFmpeg(inputPath, cropParams) {
-    const { crop_x, crop_y, crop_w, crop_h, preview_w, preview_h } = cropParams;
-
-    // Parse values
-    const cx = parseInt(crop_x, 10);
-    const cy = parseInt(crop_y, 10);
-    const cw = parseInt(crop_w, 10);
-    const ch = parseInt(crop_h, 10);
-    const pw = parseInt(preview_w, 10);
-    const ph = parseInt(preview_h, 10);
-
-    if (!Number.isFinite(cx) || !Number.isFinite(cy) || !Number.isFinite(cw) || !Number.isFinite(ch) ||
-        !Number.isFinite(pw) || !Number.isFinite(ph) || cw <= 0 || ch <= 0 || pw <= 0 || ph <= 0) {
-      console.log('⚠️ Invalid crop parameters, skipping crop');
-      return inputPath;
-    }
-
-    console.log('✂️ Cropping video with FFmpeg...');
-    console.log(`   Preview dimensions: ${pw}x${ph}`);
-    console.log(`   Crop area: ${cw}x${ch} at (${cx},${cy})`);
-
-    // Get original video dimensions using FFprobe
-    const probeCmd = `ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=s=x:p=0 "${inputPath}"`;
-    const { stdout: probeOut } = await execPromise(probeCmd);
-    const [origW, origH] = probeOut.trim().split('x').map(Number);
-
-    console.log(`   Original video: ${origW}x${origH}`);
-
-    // Map crop coordinates from preview pixels to original video pixels using the same
-    // transform the browser preview (object-fit: contain) and the app (resizeMode="contain")
-    // both apply: a single uniform scale, centered, with the shorter axis letterboxed.
-    // Independent X/Y scale factors here would distort the crop's aspect ratio to match the
-    // source video's aspect ratio whenever it isn't already 9:16.
-    const scale = Math.min(pw / origW, ph / origH);
-    const offsetX = (pw - origW * scale) / 2; // >= 0 - letterbar margin on the shorter axis
-    const offsetY = (ph - origH * scale) / 2;
-    const realX = Math.max(0, Math.round((cx - offsetX) / scale));
-    const realY = Math.max(0, Math.round((cy - offsetY) / scale));
-    const realW = Math.round(cw / scale);
-    const realH = Math.round(ch / scale);
-
-    console.log(`   Contain scale: ${scale.toFixed(4)}, offset: (${offsetX.toFixed(1)}, ${offsetY.toFixed(1)})`);
-    console.log(`   Scaled crop: ${realW}x${realH} at (${realX},${realY})`);
-
-    // Create output path
-    const ext = path.extname(inputPath);
-    const outputPath = inputPath.replace(ext, `_cropped${ext}`);
-
-    // Run FFmpeg crop (with audio copy)
-    const ffmpegCmd = `ffmpeg -i "${inputPath}" -vf "crop=${realW}:${realH}:${realX}:${realY}" -c:a copy -y "${outputPath}"`;
-    console.log(`   FFmpeg command: ${ffmpegCmd}`);
-
-    await execPromise(ffmpegCmd);
-
-    console.log('✅ Video cropped successfully');
-
-    // Delete original, return cropped path
-    try { fs.unlinkSync(inputPath); } catch {}
-
-    return outputPath;
   }
 
   // POST /api/videos/upload-photo
@@ -206,6 +91,8 @@ class VideoController {
 
   // POST /api/videos/upload
   async upload(req, res) {
+    let uploadedObjectName;
+    let saved = false;
     try {
       // Accept subcategory as primary
       const subcategoryInput = req.body.subcategory || req.body.sub_category || req.body.category;
@@ -226,46 +113,14 @@ class VideoController {
         mimetype: req.file.mimetype,
       });
 
-      // Check if crop is requested
-      let filePathToUpload = req.file.path;
-      const hasCrop = req.body.crop_w && req.body.crop_h && req.body.preview_w && req.body.preview_h;
-
-      if (hasCrop) {
-        try {
-          filePathToUpload = await this.cropVideoWithFFmpeg(req.file.path, {
-            crop_x: req.body.crop_x,
-            crop_y: req.body.crop_y,
-            crop_w: req.body.crop_w,
-            crop_h: req.body.crop_h,
-            preview_w: req.body.preview_w,
-            preview_h: req.body.preview_h,
-          });
-        } catch (cropErr) {
-          console.error('❌ Video crop failed, using original:', cropErr.message);
-          filePathToUpload = req.file.path;
-        }
-      }
-
-      // Standardize video to 1080x1920 resolution
-      try {
-        filePathToUpload = await this.standardizeVideoResolution(filePathToUpload);
-      } catch (stdErr) {
-        console.error('❌ Video standardization failed, continuing with current:', stdErr.message);
-      }
-
-      // Upload video to MinIO
-      const uploadResult = await minio.uploadFile(filePathToUpload, `narayana_templates/${String(subcategoryInput).toLowerCase().trim()}`, {
-        contentType: 'video/mp4',
+      let crop;
+      try { crop = parseVideoCrop(req.body); }
+      catch (error) { fs.unlinkSync(req.file.path); return res.status(400).json({ success: false, error: error.message }); }
+      const uploadResult = await minio.uploadFile(req.file.path, 'narayana_templates/' + String(subcategoryInput).toLowerCase().trim(), {
+        contentType: req.file.mimetype || 'application/octet-stream',
       });
-
-      console.log('✅ Video uploaded to MinIO:', uploadResult.secure_url);
-
-      // Cleanup temp file(s)
-      try { fs.unlinkSync(filePathToUpload); } catch (e) { /* ignore */ }
-      if (filePathToUpload !== req.file.path) {
-        try { fs.unlinkSync(req.file.path); } catch (e) { /* ignore */ }
-      }
-
+      uploadedObjectName = uploadResult.objectName;
+      try { fs.unlinkSync(req.file.path); } catch {}
       const normalizedMain = mainCategoryRaw ? String(mainCategoryRaw).toLowerCase().trim() : null;
       const normalizedSub = String(subcategoryInput).toLowerCase().trim();
 
@@ -365,6 +220,7 @@ class VideoController {
         image_url: uploadResult.secure_url, // keep required field populated
         video_url: uploadResult.secure_url,
         resource_type: 'video',
+        video_media: newVideoJob({ originalKey: uploadResult.objectName, crop }),
         main_category: normalizedMain,
         subcategory: normalizedSub,
         photo_container_axis: photoAxis,
@@ -372,9 +228,14 @@ class VideoController {
         coordinate_reference: coordRef,
       });
 
-      return res.status(201).json({
+      saved = true;
+      return res.status(202).json({
         success: true,
+        message: 'Video uploaded. Preparing playback.',
         data: {
+          _id: String(doc._id),
+          id: String(doc._id),
+          video_media: doc.video_media,
           video_url: doc.video_url,
           image_url: doc.image_url,
           resource_type: doc.resource_type,
@@ -389,6 +250,7 @@ class VideoController {
         }
       });
     } catch (error) {
+      if (uploadedObjectName && !saved) await minio.deleteObject(uploadedObjectName).catch(() => {});
       console.error('❌ Error uploading video:', error);
       if (req.file && req.file.path) {
         try { fs.unlinkSync(req.file.path); } catch (_) {}
